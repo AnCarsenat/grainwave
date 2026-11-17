@@ -1,9 +1,17 @@
 # Grainwave
 
-Granular lofi destroyer. Grainwave records incoming audio into a rolling buffer, replays it as
-short grains (some reversed, some pitched, some slowing to a tape stop), then runs the result
-through a lofi degrade chain: bitcrush, sample-rate reduction, wow/flutter, saturation, hiss,
-crackle and dropouts.
+Lofi time shaper and granular destroyer. Grainwave is built from separate effect units, each
+with its own power switch and dry/wet:
+
+- **Time:** a drawn curve per beat/bar sets how far behind live the playback reads, giving
+  halftime, stutters, rolls and tape stops that stay locked to the beat.
+- **Grains:** replays a rolling buffer as short grains (reversed, pitched, tape-stopped).
+- **Rhythm, Degrade, Filter, Space, Modulation:** probabilistic stutter and gate, a lofi chain
+  (crush, wow/flutter, saturation, hiss, crackle, dropouts), filters, reverb and delay, LFOs and
+  macros.
+- **FX sequencer:** 16-step lanes switch each unit on and off in time.
+
+A fresh instance is transparent: everything starts clean and you dial the damage in.
 
 - **Formats:** VST3, CLAP, standalone app (JACK/ALSA)
 - **Platform:** Linux first. Windows and macOS build from the same code.
@@ -29,12 +37,31 @@ crackle and dropouts.
 10. [GUI](#gui)
 11. [Presets and state](#presets-and-state)
 12. [Testing](#testing)
-13. [Branch ownership and workflow](#branch-ownership-and-workflow)
-14. [Roadmap](#roadmap)
+13. [CI and releases](#ci-and-releases)
+14. [Branch ownership and workflow](#branch-ownership-and-workflow)
+15. [Roadmap](#roadmap)
 
 ---
 
 ## Features
+
+**Sections**
+- Seven units: Time, Grains, Rhythm, Degrade, Filter, Space, Modulation
+- Per-unit power switch and dry/wet, crossfaded over ~10 ms (no clicks); a unit keeps running
+  while off, so switching it back on never replays stale audio
+- Defaults are clean: Grain amount 0, reverse chance 0, time pattern 1 flat
+
+**Time shaper**
+- 12 editable curves per instance (12 musical factory curves: halftime, 1/8 and 1/12 triplet
+  stutters, rolls, tape stop, reverse beat, beat repeats, stairs, swing drag, wobble)
+- Sync 1/16 to 4 bars, triplet and dotted; phase, depth, tension, smoothing, mix
+- Anti-click crossfade on jumps (Off / Low / Medium / High)
+- Patterns switch by parameter or MIDI note (C = 1 … B = 12), quantized to the beat grid
+- Trigger: host sync, or MIDI note restarts one cycle
+
+**FX sequencer**
+- 6 lanes × 16 steps (one lane per unit), step 1/4 … 1/16T, lane-active toggles
+- Steps saved with the session and in presets
 
 **Input / buffer**
 - Rolling stereo capture buffer: 1–8 bars (tempo synced) or 0.5–8 s (free)
@@ -150,11 +177,13 @@ src/
   main.rs         Standalone entry point                                           (shared)
   params.rs       All parameters, enums, and Snapshot                              (shared)
   shared.rs       Lock-free VisualState between audio thread and GUI              (shared)
-  editor.rs       egui editor                                                     feat/ui
-  presets.rs      Preset load/save                                                feat/ui
+  pattern.rs      Time-shaper curve model, value_at, factory curves               (shared) + feat/timeshape
+  editor/         egui editor: simple/advanced pages, curve editor, sequencer     feat/ui-v2
+  presets.rs      Preset load/save                                                feat/ui-v2
   dsp/
     mod.rs        Transport struct, module contract                                (shared)
     rng.rs        Allocation-free xorshift RNG                                     (shared)
+    timeshape.rs  Time shaper                                                     feat/timeshape
     input.rs      Channel mode encode/decode                                      feat/grain-engine
     grains.rs     Capture buffer, scheduler, voices, playback modes               feat/grain-engine
     rhythm.rs     Stutter, swing, gate, rewind, tape stop                         feat/rhythm
@@ -163,8 +192,9 @@ src/
     space.rs      Reverb + delay                                                  feat/space-output
     output.rs     Output gain + limiter                                           feat/space-output
     modulation.rs LFOs, envelope follower, macros                                 feat/modulation
-presets/          Factory presets (JSON)                                          feat/ui
+presets/          Factory presets (JSON)                                          feat/ui-v2
 xtask/            nih-plug bundler
+.github/workflows CI (build, test) and release (bundles on v* tags)
 docs/             Design notes per module
 ```
 
@@ -173,13 +203,18 @@ docs/             Design notes per module
 | Thread | Runs | May allocate? |
 |---|---|---|
 | Audio | `Plugin::process`, every `dsp::*::process*` | No |
-| Host main | `initialize`, `reset`, `new`, state load/save | Yes |
+| Host main | `initialize`, `new`, state load/save | Yes |
+| Audio (rare) | `Plugin::reset` | No (buffers are reused, see `dsp::realloc_or_clear`) |
 | GUI | `editor.rs`, `presets.rs` | Yes |
 
 The audio thread and the GUI communicate only through:
 - **Parameters** (`Arc<GrainwaveParams>`): GUI writes via `ParamSetter`, audio reads.
 - **`VisualState`** (`Arc`, atomics): audio writes, GUI reads. f32 stored as bits in `AtomicU32`,
-  `Relaxed` ordering. Exception: `gate_step` is a plain integer (read with `.load()`).
+  `Relaxed` ordering. Exceptions: `gate_step`, `ts_active` and `seq_step` are plain integers
+  (read with `.load()`).
+- **Time patterns** (`Arc<RwLock<PatternBank>>`, persisted): GUI writes then bumps
+  `pattern_version`; audio copies with `try_read` into preallocated storage, never blocking.
+- **Sequencer lanes** (six persisted `Arc<AtomicU32>`): GUI writes, audio reads lock-free.
 
 ### Module contract
 
@@ -187,7 +222,7 @@ Every DSP module follows the same shape (see `src/dsp/mod.rs`):
 
 ```rust
 pub fn new(...) -> Self                     // may allocate
-pub fn reset(&mut self, sample_rate: f32, max_block: usize)   // may allocate; clears state
+pub fn reset(&mut self, sample_rate: f32, max_block: usize)   // clears state; allocates only if the size changed
 pub fn process(&mut self, l: &mut [f32], r: &mut [f32], snap: &Snapshot, t: &Transport)
 ```
 
@@ -206,14 +241,18 @@ at the block start (internal free-running counter if the host gives none), `play
 ## Signal flow
 
 ```
-host in ─► input gain ─┬─────────────────────────────────────────────────────────┐ dry
-                       │                                                          ▼
-                       ├─► modulation.process_block (rewrites Snapshot)          mix ─► output (gain, limiter) ─► host out
-                       │                                                          ▲
-                       └─► input::encode ─► grains ─► rhythm ─► degrade ─► filter ─► space ─► input::decode ┘ wet
+host in ─► input gain ─┬──────────────────────────────────────────────────────────────┐ dry
+                       │                                                               ▼
+                       ├─► modulation (if on; rewrites Snapshot)                     mix ─► output ─► host out
+                       │                                                               ▲
+                       └─► encode ─► [time] ─► [grains] ─► [rhythm] ─► [degrade] ─► [filter] ─► [space] ─► decode ┘ wet
 ```
 
-- MIDI note on/off events are read at the start of each block and passed to `grains`.
+- Each `[section]` runs inside a stage fade: `out = in + (section(in) − in) × gain`, with
+  `gain = power × section mix × sequencer step` smoothed by a 10 ms one-pole. Grains use Grain
+  amount as their mix; Time also has its own internal `ts_mix`.
+- Sections keep processing while their gain is 0.
+- MIDI note-ons go to the grain engine (pitch) and the time shaper (pattern switch / trigger).
 - Dry/wet mix ramps linearly across the block from the previous value to avoid zipper noise.
 - No plugin latency is reported (no lookahead anywhere in the chain).
 
@@ -366,7 +405,7 @@ IDs are stable: renaming one breaks saved sessions. Nested arrays get a numeric 
 ### Playback
 | ID | Name | Range | Default |
 |---|---|---|---|
-| `p_rev` | Reverse chance | 0 … 100 % | 25 % |
+| `p_rev` | Reverse chance | 0 … 100 % | 0 % |
 | `p_pitch` | Pitch | −24 … +24 st | 0 |
 | `p_pjit` | Pitch jitter | 0 … 12 st | 0 |
 | `p_quant` | Pitch quantize | Off / Octaves / Fifths / Major / Minor / Pentatonic | Off |
@@ -432,6 +471,36 @@ IDs are stable: renaming one breaks saved sessions. Nested arrays get a numeric 
 | `env_amt` | Envelope amount | −1 … +1 | 0 |
 | `env_att` / `env_rel` | Envelope attack / release | 0.1 … 500 ms / 1 … 2000 ms | 10 / 150 ms |
 
+### Sections
+| ID | Name | Range | Default |
+|---|---|---|---|
+| `on_time`, `on_grain`, `on_rhythm`, `on_degrade`, `on_filter`, `on_space`, `on_mod` | Section power | on/off | on |
+| `g_amt` | Grain amount | 0 … 100 % | 0 % |
+| `r_amt`, `d_amt`, `f_amt`, `s_amt` | Rhythm / Degrade / Filter / Space mix | 0 … 100 % | 100 % |
+
+### Time shaper
+| ID | Name | Range | Default |
+|---|---|---|---|
+| `ts_pat` | Time pattern | 1 … 12 | 1 (flat) |
+| `ts_sync` | Time sync | 1/16 … 4/1, triplets, dotted | 1/1 |
+| `ts_trig` | Time trigger | Sync / MIDI | Sync |
+| `ts_patq` | Pattern quantize | Off, 1/4 beat … 1 bar | 1 beat |
+| `ts_midisw` | MIDI switches pattern | on/off | on |
+| `ts_depth` | Time depth | 0 … 100 % | 100 % |
+| `ts_phase` | Time phase | 0 … 100 % | 0 % |
+| `ts_tension` | Time tension | −1 … +1 | 0 |
+| `ts_smooth` | Time smooth | 0 … 100 % | 0 % |
+| `ts_aclick` | Anti-click | Off / Low / Medium / High | Medium |
+| `ts_mix` | Time mix | 0 … 100 % | 100 % |
+
+### FX sequencer
+| ID | Name | Range | Default |
+|---|---|---|---|
+| `sq_on` | FX sequencer | on/off | off |
+| `sq_rate` | Sequencer step | 1/4 … 1/16T | 1/16 |
+
+Lane steps are persisted state (`seq-time` … `seq-space`), not parameters.
+
 ### Macros and output
 | ID | Name | Range | Default |
 |---|---|---|---|
@@ -469,18 +538,19 @@ IDs are stable: renaming one breaks saved sessions. Nested arrays get a numeric 
 
 ## GUI
 
-egui editor, 960 × 640 default, resizable. Layout:
+egui editor, 960 × 640 default, minimum 820 × 560. Everything fits without scrolling; see
+[docs/ui.md](docs/ui.md) for the size budget.
 
-- **Top bar:** plugin name, preset browser (previous/next, dropdown, save), randomize button,
-  macro knobs (Dust, Chaos, Age), mix, output gain.
-- **Center:** waveform of the capture buffer with the write head, active grains as markers
-  (reverse grains in a second color), and freeze toggle.
-- **Panels:** Input, Grains, Playback, Rhythm (16-step gate grid that highlights the current step,
-  rewind and tape-stop momentary buttons), Degrade, Filter, Space, Modulation (LFO meters).
-- Each panel has a lock toggle; randomize skips locked panels and never touches output gain,
-  mix or performance buttons.
-- All edits go through `ParamSetter` (`begin_set_parameter` / `set_parameter` /
-  `end_set_parameter`) so hosts record automation and undo.
+- **Top bar:** preset browser, Randomize (with lock groups), Simple/Advanced toggle, Mix,
+  Output, Limiter.
+- **Simple page:** time-shaper curve editor with 12 pattern buttons; a row of seven effect units
+  (power LED, dry/wet fader, 1–2 key knobs, dimmed when off or gated); the FX sequencer grid.
+- **Advanced page:** one tab per area with every parameter, each tab headed by its section's
+  power switch and dry/wet. The waveform with live grain markers is on the Grains tab.
+- **Curve editor:** click to add points, drag, Shift-drag for tension, right-click to change the
+  segment shape (curve, S-curve, hold), double-click to delete, snap to 1/8, 1/12 or 1/16.
+- All parameter edits go through `ParamSetter` so hosts record automation and undo. Curve and
+  sequencer edits are saved with the session.
 
 ## Presets and state
 
@@ -494,7 +564,10 @@ egui editor, 960 × 640 default, resizable. Layout:
 
   Values are **normalized** (0–1) and keyed by parameter ID. Missing IDs keep their default, so old
   presets survive new parameters.
-- Factory presets: `presets/*.json`, compiled in with `include_str!`.
+- Optional `"time_patterns"` (full curve bank) and `"seq_lanes"` (six lane words) replace the
+  bank / lanes when present and leave them alone when absent.
+- Factory presets: `presets/*.json` (18: grain textures, time-shaper grooves, sequencer
+  patterns), compiled in with `include_str!`.
 - User presets: `$XDG_CONFIG_HOME/grainwave/presets/` (fallback `~/.config/grainwave/presets/`).
 - Preset I/O runs on the GUI thread only.
 
@@ -508,6 +581,25 @@ egui editor, 960 × 640 default, resizable. Layout:
 - `cargo test` must pass and `cargo build` must have zero warnings before merging.
 - Manual check: load the debug build in a host (or run the standalone) to catch audio-thread
   allocations.
+
+## CI and releases
+
+- **`.github/workflows/ci.yml`:** on pushes to `main` and pull requests: build with
+  `-D warnings`, `cargo test`, clippy (advisory).
+- **`.github/workflows/release.yml`:** on a `v*` tag that matches the `Cargo.toml` version,
+  bundles VST3 + CLAP for Linux x86_64, Windows x86_64 and universal macOS, zips them and
+  publishes a GitHub release with install notes. Manual runs (`workflow_dispatch`) produce the
+  zips as artifacts without releasing.
+
+To release:
+
+```sh
+# bump version in Cargo.toml, commit, then
+git tag v0.2.0
+git push origin main v0.2.0
+```
+
+macOS bundles are unsigned; users run `xattr -dr com.apple.quarantine <bundle>` once.
 
 ---
 
@@ -525,7 +617,8 @@ not edit files owned by another branch. Shared files (`lib.rs`, `params.rs`, `sh
 | `feat/degrade` | `dsp/degrade.rs`, `dsp/filter.rs` | Degrade chain, oversampling, filters |
 | `feat/space-output` | `dsp/space.rs`, `dsp/output.rs` | Reverb, delay, output gain, limiter |
 | `feat/modulation` | `dsp/modulation.rs` | LFOs, envelope follower, macros |
-| `feat/ui` | `editor.rs`, `presets.rs`, `presets/` | GUI, waveform, presets, randomize |
+| `feat/ui` → `feat/ui-v2` | `editor/`, `presets.rs`, `presets/` | GUI, curve editor, sequencer grid, presets, randomize |
+| `feat/timeshape` | `dsp/timeshape.rs`, `factory_bank()` in `pattern.rs` | Time shaper, factory curves |
 
 `main` is integration only: branches merge into it once tests pass. Docs in `docs/` and this
 README are maintained on `main`.
@@ -536,7 +629,9 @@ Commit style: Conventional Commits (`feat(grains): ...`, `fix(degrade): ...`, `t
 
 - **v0.1 (MVP):** buffer, grain size/density/position/jitter, reverse chance, pitch,
   bitcrush/sample rate, wow/flutter, low-pass, Dust, mix.
-- **v0.2:** everything in [Features](#features). **Implemented** (all six feature branches
-  merged, 96 unit tests). Open issues listed in [docs/README.md](docs/README.md#known-issues-to-fix-next).
+- **v0.2:** granular/lofi feature set. Implemented (six feature branches).
+- **v0.3:** section power switches and mixes, clean defaults, time shaper, FX sequencer,
+  simple/advanced GUI, CI and release workflows. Implemented (132 unit tests). Open issues in
+  [docs/README.md](docs/README.md#known-issues-to-fix-next).
 - **Later:** LV2 build, per-grain filter, sample-accurate automation, multiple modulation
   targets per source, preset tagging, oversampling for the whole degrade chain.

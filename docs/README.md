@@ -17,21 +17,25 @@ the design; these files record the details.
 
 ## Cross-module notes
 
-- **`VisualState::gate_step` is an integer**, not f32 bits. Every other `VisualState` float is
-  stored as bits and read with `load_f32`.
+- **Integer `VisualState` fields:** `gate_step`, `ts_active` and `seq_step` (u32::MAX = off) are
+  plain integers. Every other `VisualState` float is stored as bits and read with `load_f32`.
+- **Stage fades** (`lib.rs`): every section from Time to Space is wrapped in a 10 ms crossfade
+  driven by power × mix × sequencer step. Sections keep processing at gain 0.
 - **Latency:** the plugin reports 0 latency. Oversampling in the degrade chain adds about 23
   samples at 2×, so with mix below 100 % the dry and wet paths are slightly misaligned.
-- **Block-rate parameters:** `Snapshot` is taken once per block and modulation is block-rate.
-  Every module smooths internally, so automation and LFOs don't click, but fast LFOs step on large
-  host buffers.
-- **Clock:** gate, stutter, synced LFOs and synced grains assume 4/4 and freeze if the host stops
-  advancing `beat_pos`.
+- **Block-rate parameters:** `Snapshot` is taken once per block; modulation and sequencer steps
+  are block-rate. Modules smooth internally.
+- **Clock:** gate, stutter, time shaper, sequencer, synced LFOs and synced grains assume 4/4 and
+  freeze if the host stops advancing `beat_pos`.
+- **`reset()` is allocation-free** after `initialize()` (`dsp::realloc_or_clear`), because
+  nih-plug calls `Plugin::reset` on the audio thread.
 
 ## Known issues to fix next
 
 1. Report oversampling latency to the host, or delay the dry path to match.
-2. Crossfade `degrade_order` changes.
-3. Release Rewind / Tape stop when the editor closes while they are held.
-4. Visual check of the editor at 960 × 640 (Degrade and Modulation panels currently scroll).
-5. Crossfade channel-mode switches and the unfreeze seam in the capture buffer.
-6. Run the debug build in a host to exercise `assert_process_allocs` end to end.
+2. Crossfade `degrade_order` changes and channel-mode switches; smooth the unfreeze seam.
+3. Visual check of the v2 editor in a host (verified only by headless layout tests).
+4. Rewind / Tape stop stay on if the editor closes while held (released when it reopens).
+5. Sequencer steps and MIDI pattern switches are block-accurate, not sample-accurate.
+6. No undo for curve and sequencer edits.
+7. Add a `LICENSE` file (GPL-3.0) before the first public release.
