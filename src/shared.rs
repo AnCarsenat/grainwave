@@ -20,7 +20,8 @@ pub struct VisualState {
     /// Current modulation output per LFO (-1..1) and envelope follower (0..1).
     pub lfo_values: [AtomicU32; 2],
     pub env_value: AtomicU32,
-    /// Current step of the 16-step gate (0..15).
+    /// Current step of the 16-step gate (0..15). Plain integer, NOT f32 bits:
+    /// read with `.load(Ordering::Relaxed)`, never `load_f32`.
     pub gate_step: AtomicU32,
 }
 
