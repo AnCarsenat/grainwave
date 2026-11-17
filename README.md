@@ -13,6 +13,11 @@ with its own power switch and dry/wet:
 
 A fresh instance is transparent: everything starts clean and you dial the damage in.
 
+![Grainwave Simple page: time-shaper curve editor, seven effect units and the FX sequencer](docs/screenshots/simple.png)
+
+**[Download the latest release](https://github.com/AnCarsenat/grainwave/releases/latest)**
+(VST3 + CLAP for Linux, Windows and macOS)
+
 - **Formats:** VST3, CLAP, standalone app (JACK/ALSA)
 - **Platform:** Linux first. Windows and macOS build from the same code.
 - **Stack:** Rust 2021, [nih-plug](https://github.com/robbert-vdh/nih-plug), egui GUI via `nih_plug_egui`
@@ -25,6 +30,7 @@ A fresh instance is transparent: everything starts clean and you dial the damage
 
 ## Contents
 
+1. [Screenshots](#screenshots)
 1. [Features](#features)
 2. [Building](#building)
 3. [Installing](#installing)
@@ -40,6 +46,27 @@ A fresh instance is transparent: everything starts clean and you dial the damage
 13. [CI and releases](#ci-and-releases)
 14. [Branch ownership and workflow](#branch-ownership-and-workflow)
 15. [Roadmap](#roadmap)
+
+---
+
+## Screenshots
+
+The **Simple** page (above) holds the time-shaper curve editor, a row of separated effect units
+(power LED, dry/wet fader, key knobs) and the FX sequencer. **Advanced** shows every parameter,
+one tab per section:
+
+| Time shaper | Grains |
+|---|---|
+| ![Advanced Time tab: curve editor with 12 pattern slots, sync, trigger, quantize, anti-click](docs/screenshots/advanced-time.png) | ![Advanced Grains tab: live buffer waveform with forward and reverse grain markers](docs/screenshots/advanced-grains.png) |
+| **Degrade** | **FX sequencer** |
+| ![Advanced Degrade tab: digital, tape, noise and macro controls](docs/screenshots/advanced-degrade.png) | ![Advanced Sequencer tab: 6 lanes by 16 steps](docs/screenshots/advanced-sequencer.png) |
+
+Screenshots are rendered offscreen from the real editor (CPU rasterizer, no window) with demo
+curve, sequencer and meter data; knobs show default values. Regenerate them with:
+
+```sh
+cargo test --release --lib screenshots -- --ignored
+```
 
 ---
 

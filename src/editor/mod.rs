@@ -21,6 +21,8 @@ mod sequencer;
 mod simple;
 mod theme;
 mod widgets;
+#[cfg(test)]
+mod screenshot;
 
 use crate::dsp::rng::Rng;
 use crate::params::GrainwaveParams;
@@ -183,10 +185,13 @@ fn top_bar(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, s: &ParamSetter, state:
     sep(ui, right_edge);
 
     // Title and status.
-    let title_w = 96.0;
+    // Sized from the measured text so the title is never clipped.
+    let title_font = FontId::proportional(18.0);
+    let title_text_w = ui.fonts(|f| f.layout_no_wrap("GRAINWAVE".into(), title_font.clone(), ACCENT).size().x);
+    let title_w = title_text_w.ceil() + 2.0;
     let title = Rect::from_min_size(rect.min, vec2(title_w, h));
     let painter = ui.painter_at(title);
-    painter.text(pos2(title.left(), cy + 2.0), Align2::LEFT_BOTTOM, "GRAINWAVE", FontId::proportional(18.0), ACCENT);
+    painter.text(pos2(title.left(), cy + 2.0), Align2::LEFT_BOTTOM, "GRAINWAVE", title_font, ACCENT);
     painter.text(pos2(title.left() + 1.0, cy + 4.0), Align2::LEFT_TOP, &state.status, FontId::proportional(9.5), TEXT_DIM);
     if !state.status.is_empty() {
         ui.interact(title, egui::Id::new("status_tip"), egui::Sense::hover()).on_hover_text(&state.status);

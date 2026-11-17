@@ -17,6 +17,7 @@ Branch: `feat/ui-v2` (merged; replaces the v1 editor). egui 0.31 via `nih_plug_e
 | `simple.rs` | Simple page |
 | `advanced.rs` | Advanced page and tabs |
 | `randomize.rs` | Randomize with lock groups |
+| `screenshot.rs` | Test-only offscreen renderer for `docs/screenshots/` (`cargo test --release --lib screenshots -- --ignored`) |
 
 ## Window
 
