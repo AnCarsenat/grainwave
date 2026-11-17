@@ -145,8 +145,8 @@ impl Rhythm {
         let sr = if sample_rate.is_finite() && sample_rate > 0.0 { sample_rate } else { 48_000.0 };
         self.sample_rate = sr;
         self.cap = ((sr * BUFFER_SECONDS).ceil() as usize).max(64);
-        self.buf_l = vec![0.0; self.cap];
-        self.buf_r = vec![0.0; self.cap];
+        super::realloc_or_clear(&mut self.buf_l, self.cap);
+        super::realloc_or_clear(&mut self.buf_r, self.cap);
         self.written = 0;
         self.frozen = false;
         self.rng = Rng::new(0x5259_5448);

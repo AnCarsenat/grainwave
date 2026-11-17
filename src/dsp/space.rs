@@ -141,7 +141,7 @@ impl Reverb {
             self.offset[i] = total;
             total += n;
         }
-        self.buf = vec![0.0; total];
+        super::realloc_or_clear(&mut self.buf, total);
         self.pos = [0; LINES];
         self.damp_state = [0.0; LINES];
         self.max_len = self.len.iter().copied().max().unwrap_or(1);
@@ -310,8 +310,8 @@ impl Delay {
         self.sr = sr.max(1000.0);
         let max = (DELAY_MAX_S * self.sr).ceil() as usize;
         // +4 so a read at exactly max delay (with interpolation) never reaches the write head.
-        self.buf_l = vec![0.0; max + 4];
-        self.buf_r = vec![0.0; max + 4];
+        super::realloc_or_clear(&mut self.buf_l, max + 4);
+        super::realloc_or_clear(&mut self.buf_r, max + 4);
         self.w = 0;
         self.max_delay = max as f32;
         self.cur_d = 1.0;

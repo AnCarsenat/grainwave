@@ -36,3 +36,14 @@ impl Transport {
         self.sample_rate as f64 * 60.0 / self.bpm
     }
 }
+
+/// Size `buf` to `len` zeros. Reuses the allocation when the length is unchanged, so
+/// `reset()` stays allocation-free after `initialize()` (nih-plug runs `Plugin::reset` on
+/// the audio thread under `assert_process_allocs`).
+pub fn realloc_or_clear(buf: &mut Vec<f32>, len: usize) {
+    if buf.len() == len {
+        buf.fill(0.0);
+    } else {
+        *buf = vec![0.0; len];
+    }
+}

@@ -132,8 +132,8 @@ impl TimeShaper {
     pub fn reset(&mut self, sample_rate: f32, _max_block: usize) {
         self.sr = if sample_rate.is_finite() && sample_rate > 0.0 { sample_rate } else { 44_100.0 };
         let len = (BUFFER_SECONDS * self.sr).ceil() as usize + GUARD_SAMPLES;
-        self.buf_l = vec![0.0; len];
-        self.buf_r = vec![0.0; len];
+        super::realloc_or_clear(&mut self.buf_l, len);
+        super::realloc_or_clear(&mut self.buf_r, len);
         self.wpos = len - 1;
         self.filled = 0;
         self.pending = None;
