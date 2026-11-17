@@ -1,0 +1,120 @@
+name: Release
+
+# Push a tag like v0.2.0 (matching the version in Cargo.toml) to build and publish
+# VST3 + CLAP bundles for Linux, Windows and macOS (universal) as a GitHub release.
+# Run manually (workflow_dispatch) to build the bundles as artifacts without releasing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bundle:
+    name: Bundle (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            bundle: bundle
+            targets: ""
+          - name: windows-x86_64
+            os: windows-latest
+            bundle: bundle
+            targets: ""
+          - name: macos-universal
+            os: macos-latest
+            bundle: bundle-universal
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches Cargo.toml version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          crate_version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$crate_version" != "$tag_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $crate_version"
+            exit 1
+          fi
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libgl-dev libjack-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-dri2-0-dev libxcb-icccm4-dev libxcursor-dev \
+            libxkbcommon-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Test
+        if: runner.os == 'Linux'
+        run: cargo test --workspace
+
+      - name: Bundle
+        shell: bash
+        run: cargo xtask ${{ matrix.bundle }} grainwave --release
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "${GITHUB_REF_TYPE}" = "tag" ] || version="dev-${GITHUB_SHA::7}"
+          archive="Grainwave-${version}-${{ matrix.name }}.zip"
+          cd target/bundled
+          cp ../../README.md ../../LICENSE* . 2>/dev/null || true
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a -tzip "../../$archive" Grainwave.vst3 Grainwave.clap README.md
+          else
+            zip -r -y "../../$archive" Grainwave.vst3 Grainwave.clap README.md
+          fi
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body: |
+            ## Install
+            Unzip, then copy `Grainwave.vst3` and/or `Grainwave.clap` to your plugin folder:
+            - **Linux:** `~/.vst3/`, `~/.clap/`
+            - **Windows:** `C:\Program Files\Common Files\VST3\`, `C:\Program Files\Common Files\CLAP\`
+            - **macOS:** `~/Library/Audio/Plug-Ins/VST3/`, `~/Library/Audio/Plug-Ins/CLAP/`
+              (unsigned: run `xattr -dr com.apple.quarantine <bundle>` once)

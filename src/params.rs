@@ -723,6 +723,15 @@ pub struct SectionParams {
     pub space: BoolParam,
     #[id = "on_mod"]
     pub modulation: BoolParam,
+    /// Per-section dry/wet (stage crossfade gain). Time uses `ts_mix`, grains `g_amt`.
+    #[id = "r_amt"]
+    pub rhythm_mix: FloatParam,
+    #[id = "d_amt"]
+    pub degrade_mix: FloatParam,
+    #[id = "f_amt"]
+    pub filter_mix: FloatParam,
+    #[id = "s_amt"]
+    pub space_mix: FloatParam,
 }
 
 impl Default for SectionParams {
@@ -736,9 +745,39 @@ impl Default for SectionParams {
             filter: BoolParam::new("Filter on", true),
             space: BoolParam::new("Space on", true),
             modulation: BoolParam::new("Modulation on", true),
+            rhythm_mix: percent("Rhythm mix", 1.0),
+            degrade_mix: percent("Degrade mix", 1.0),
+            filter_mix: percent("Filter mix", 1.0),
+            space_mix: percent("Space mix", 1.0),
         }
     }
 }
+
+/// FX sequencer: 16-step lanes that switch sections on and off in time. The step patterns
+/// live in `GrainwaveParams::grid_lanes` (persisted atomics, see `SEQ_*` constants).
+#[derive(Params)]
+pub struct SequencerParams {
+    #[id = "sq_on"]
+    pub enabled: BoolParam,
+    #[id = "sq_rate"]
+    pub rate: EnumParam<Division>,
+}
+
+impl Default for SequencerParams {
+    fn default() -> Self {
+        Self {
+            enabled: BoolParam::new("FX sequencer", false),
+            rate: EnumParam::new("Sequencer step", Division::Sixteenth),
+        }
+    }
+}
+
+/// Lanes in `grid_lanes`, same order as the stage fades: time, grains, rhythm, degrade,
+/// filter, space.
+pub const SEQ_LANES: usize = 6;
+pub const SEQ_STEPS: usize = 16;
+/// Bit 16 of a lane word: lane active (when inactive the lane does not gate its section).
+pub const SEQ_LANE_ACTIVE: u32 = 1 << 16;
 
 #[derive(Enum, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TimeSync {
@@ -903,8 +942,25 @@ pub struct GrainwaveParams {
     /// Not persisted. Bumped by whoever writes `time_patterns`.
     pub pattern_version: Arc<std::sync::atomic::AtomicU32>,
 
+    /// FX sequencer lanes: bits 0..15 = steps on, bit 16 = lane active. Written by the GUI,
+    /// read lock-free by the audio thread. Order: time, grains, rhythm, degrade, filter, space.
+    #[persist = "seq-time"]
+    pub seq_time: Arc<std::sync::atomic::AtomicU32>,
+    #[persist = "seq-grains"]
+    pub seq_grains: Arc<std::sync::atomic::AtomicU32>,
+    #[persist = "seq-rhythm"]
+    pub seq_rhythm: Arc<std::sync::atomic::AtomicU32>,
+    #[persist = "seq-degrade"]
+    pub seq_degrade: Arc<std::sync::atomic::AtomicU32>,
+    #[persist = "seq-filter"]
+    pub seq_filter: Arc<std::sync::atomic::AtomicU32>,
+    #[persist = "seq-space"]
+    pub seq_space: Arc<std::sync::atomic::AtomicU32>,
+
     #[nested(group = "Sections")]
     pub sections: SectionParams,
+    #[nested(group = "Sequencer")]
+    pub sequencer: SequencerParams,
     #[nested(group = "Time")]
     pub time: TimeParams,
 
@@ -936,7 +992,15 @@ impl Default for GrainwaveParams {
             editor_state: EguiState::from_size(960, 640),
             time_patterns: Arc::new(std::sync::RwLock::new(crate::pattern::PatternBank::default())),
             pattern_version: Arc::new(std::sync::atomic::AtomicU32::new(1)),
+            // Default lanes: all steps on, lane inactive.
+            seq_time: Arc::new(std::sync::atomic::AtomicU32::new(0xFFFF)),
+            seq_grains: Arc::new(std::sync::atomic::AtomicU32::new(0xFFFF)),
+            seq_rhythm: Arc::new(std::sync::atomic::AtomicU32::new(0xFFFF)),
+            seq_degrade: Arc::new(std::sync::atomic::AtomicU32::new(0xFFFF)),
+            seq_filter: Arc::new(std::sync::atomic::AtomicU32::new(0xFFFF)),
+            seq_space: Arc::new(std::sync::atomic::AtomicU32::new(0xFFFF)),
             sections: Default::default(),
+            sequencer: Default::default(),
             time: Default::default(),
             input: Default::default(),
             grain: Default::default(),
@@ -949,6 +1013,24 @@ impl Default for GrainwaveParams {
             macros: Default::default(),
             output: Default::default(),
         }
+    }
+}
+
+impl GrainwaveParams {
+    /// The six sequencer lane atomics, in stage order.
+    pub fn seq_lane_atomics(&self) -> [&std::sync::atomic::AtomicU32; SEQ_LANES] {
+        [
+            &self.seq_time,
+            &self.seq_grains,
+            &self.seq_rhythm,
+            &self.seq_degrade,
+            &self.seq_filter,
+            &self.seq_space,
+        ]
+    }
+
+    pub fn seq_lanes(&self) -> [u32; SEQ_LANES] {
+        self.seq_lane_atomics().map(|a| a.load(std::sync::atomic::Ordering::Relaxed))
     }
 }
 
@@ -1054,6 +1136,15 @@ pub struct Snapshot {
     pub on_filter: bool,
     pub on_space: bool,
     pub on_modulation: bool,
+    pub rhythm_mix: f32,
+    pub degrade_mix: f32,
+    pub filter_mix: f32,
+    pub space_mix: f32,
+    // FX sequencer
+    pub seq_enabled: bool,
+    pub seq_rate: Division,
+    /// Lane words (see SEQ_LANE_ACTIVE), order time, grains, rhythm, degrade, filter, space.
+    pub seq_lanes: [u32; SEQ_LANES],
     // time shaper
     pub ts_pattern: i32,
     pub ts_sync: TimeSync,
@@ -1172,6 +1263,14 @@ impl Snapshot {
             on_filter: p.sections.filter.value(),
             on_space: p.sections.space.value(),
             on_modulation: p.sections.modulation.value(),
+            rhythm_mix: p.sections.rhythm_mix.value(),
+            degrade_mix: p.sections.degrade_mix.value(),
+            filter_mix: p.sections.filter_mix.value(),
+            space_mix: p.sections.space_mix.value(),
+
+            seq_enabled: p.sequencer.enabled.value(),
+            seq_rate: p.sequencer.rate.value(),
+            seq_lanes: p.seq_lanes(),
 
             ts_pattern: p.time.pattern.value(),
             ts_sync: p.time.sync.value(),

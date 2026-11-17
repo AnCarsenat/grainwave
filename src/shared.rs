@@ -32,6 +32,8 @@ pub struct VisualState {
     /// Section output gains 0..1 (f32 bits), for dimming bypassed panels:
     /// [time, grains, rhythm, degrade, filter, space].
     pub section_gain: [AtomicU32; 6],
+    /// FX sequencer current step 0..15, or u32::MAX when the sequencer is off. Plain integer.
+    pub seq_step: AtomicU32,
 }
 
 impl Default for VisualState {
@@ -49,6 +51,7 @@ impl Default for VisualState {
             ts_value: AtomicU32::new(0),
             ts_active: AtomicU32::new(0),
             section_gain: std::array::from_fn(|_| AtomicU32::new(0)),
+            seq_step: AtomicU32::new(u32::MAX),
         }
     }
 }

@@ -129,7 +129,7 @@ impl Grainwave {
         self.output.reset(sr, max);
         // Start each section at its current target so loading never fades in.
         let snap = Snapshot::from_params(&self.params);
-        for (fade, target) in self.fades.iter_mut().zip(stage_targets(&snap)) {
+        for (fade, target) in self.fades.iter_mut().zip(stage_targets(&snap, None)) {
             fade.gain = target;
         }
         // Patterns may have been replaced by a state load: force the audio copy to refresh.
@@ -138,16 +138,35 @@ impl Grainwave {
 }
 
 /// Section target gains: [time, grains, rhythm, degrade, filter, space].
-fn stage_targets(s: &Snapshot) -> [f32; 6] {
+/// gain = power switch × section mix × FX sequencer step (when that lane is active).
+/// `seq_step` is the current sequencer step (0..15), or `None` when the sequencer is off.
+fn stage_targets(s: &Snapshot, seq_step: Option<usize>) -> [f32; 6] {
     let on = |b: bool| if b { 1.0 } else { 0.0 };
-    [
+    let mut t = [
         on(s.on_time),
-        on(s.on_grains) * s.grain_amount.clamp(0.0, 1.0),
-        on(s.on_rhythm),
-        on(s.on_degrade),
-        on(s.on_filter),
-        on(s.on_space),
-    ]
+        on(s.on_grains) * s.grain_amount,
+        on(s.on_rhythm) * s.rhythm_mix,
+        on(s.on_degrade) * s.degrade_mix,
+        on(s.on_filter) * s.filter_mix,
+        on(s.on_space) * s.space_mix,
+    ];
+    if let Some(step) = seq_step {
+        for (gain, lane) in t.iter_mut().zip(s.seq_lanes) {
+            if lane & params::SEQ_LANE_ACTIVE != 0 && lane & (1 << step) == 0 {
+                *gain = 0.0;
+            }
+        }
+    }
+    t.map(|g| if g.is_finite() { g.clamp(0.0, 1.0) } else { 0.0 })
+}
+
+/// Current FX sequencer step from the host clock, or `None` when the sequencer is off.
+fn seq_step(s: &Snapshot, beat_pos: f64) -> Option<usize> {
+    if !s.seq_enabled {
+        return None;
+    }
+    let step = (beat_pos / s.seq_rate.beats() + 1e-7).floor();
+    Some(step.rem_euclid(params::SEQ_STEPS as f64) as usize)
 }
 
 /// Runs one section inside its fade.
@@ -272,7 +291,11 @@ impl Plugin for Grainwave {
         if snap.on_modulation {
             self.modulation.process_block(&mut snap, l, r, &transport);
         }
-        let targets = stage_targets(&snap);
+        let step = seq_step(&snap, beat_pos);
+        self.visual
+            .seq_step
+            .store(step.map_or(u32::MAX, |s| s as u32), Ordering::Relaxed);
+        let targets = stage_targets(&snap, step);
 
         input::encode(l, r, &snap);
         stage!(self, 0, targets[0], l, r, n, self.time.process(l, r, &snap, &transport));
@@ -326,3 +349,64 @@ impl Vst3Plugin for Grainwave {
 
 nih_export_clap!(Grainwave);
 nih_export_vst3!(Grainwave);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use params::{Division, SEQ_LANE_ACTIVE};
+
+    fn snap() -> Snapshot {
+        Snapshot::from_params(&GrainwaveParams::default())
+    }
+
+    #[test]
+    fn default_targets_are_clean() {
+        // Time on (flat pattern = transparent), grains amount 0, the rest on at mix 1.
+        assert_eq!(stage_targets(&snap(), None), [1.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn power_and_mix_scale_targets() {
+        let mut s = snap();
+        s.on_degrade = false;
+        s.space_mix = 0.25;
+        s.grain_amount = 0.5;
+        let t = stage_targets(&s, None);
+        assert_eq!(t[3], 0.0);
+        assert_eq!(t[5], 0.25);
+        assert_eq!(t[1], 0.5);
+    }
+
+    #[test]
+    fn sequencer_gates_only_active_lanes() {
+        let mut s = snap();
+        s.seq_enabled = true;
+        // Degrade lane active with only step 2 on; rhythm lane inactive with no steps.
+        s.seq_lanes[3] = SEQ_LANE_ACTIVE | (1 << 2);
+        s.seq_lanes[2] = 0;
+        assert_eq!(stage_targets(&s, Some(2))[3], 1.0);
+        assert_eq!(stage_targets(&s, Some(3))[3], 0.0);
+        assert_eq!(stage_targets(&s, Some(3))[2], 1.0, "inactive lane must not gate");
+    }
+
+    #[test]
+    fn sequencer_step_follows_clock() {
+        let mut s = snap();
+        assert_eq!(seq_step(&s, 3.0), None);
+        s.seq_enabled = true;
+        s.seq_rate = Division::Sixteenth;
+        assert_eq!(seq_step(&s, 0.0), Some(0));
+        assert_eq!(seq_step(&s, 0.25), Some(1));
+        assert_eq!(seq_step(&s, 3.99), Some(15));
+        assert_eq!(seq_step(&s, 4.0), Some(0));
+        s.seq_rate = Division::Eighth;
+        assert_eq!(seq_step(&s, 1.0), Some(2));
+    }
+
+    #[test]
+    fn nan_mix_is_safe() {
+        let mut s = snap();
+        s.filter_mix = f32::NAN;
+        assert_eq!(stage_targets(&s, None)[4], 0.0);
+    }
+}
