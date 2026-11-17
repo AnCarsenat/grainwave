@@ -162,11 +162,85 @@ impl Default for PatternBank {
 
 /// OWNER: feat/timeshape. The 12 built-in patterns. Pattern 1 must stay flat (y = 0,
 /// untouched audio) so a fresh instance is transparent.
+///
+/// Designed for sync 1/1 (one bar per cycle; at 1/2 everything happens twice as often).
+/// Reminder of the semantics: a constant y plays the audio `y` cycles late (a hold step
+/// after a live section = a repeat), slope 0.5 = half speed, slope 2 = reverse.
 pub fn factory_bank() -> PatternBank {
-    let mut patterns = vec![Pattern::flat("Off")];
-    for i in 2..=NUM_PATTERNS {
-        patterns.push(Pattern::flat(&format!("Pattern {i}")));
+    let named = |name: &str, points: Vec<Point>| Pattern { name: name.to_string(), points };
+    // Hold steps: (x, y) pairs, each holding y until the next one.
+    let steps = |name: &str, s: &[(f32, f32)]| {
+        named(name, s.iter().map(|&(x, y)| Point::hold(x, y)).collect())
+    };
+    let scurve = |x: f32, y: f32| Point { x, y, tension: 0.0, kind: SegmentKind::SCurve };
+
+    // Stutter roll: from x = 0.5 every step replays the slice starting at 0.5,
+    // slices getting shorter: 2 x 1/8, 2 x 1/16, 4 x 1/32.
+    let roll_starts = [0.5, 0.625, 0.75, 0.8125, 0.875, 0.906_25, 0.9375, 0.968_75];
+    let mut roll = vec![(0.0, 0.0)];
+    roll.extend(roll_starts.iter().map(|&x| (x, x - 0.5)));
+
+    // Stairs 1/16: in each half bar, 4 live 16ths then 4 repeats of the next 16th.
+    let mut stairs = Vec::new();
+    for half in 0..2 {
+        let base = half as f32 * 0.5;
+        stairs.push((base, 0.0));
+        for k in 0..4 {
+            stairs.push((base + 0.25 + k as f32 / 16.0, k as f32 / 16.0));
+        }
     }
+
+    // Swing drag: per beat, the first 60% of the beat plays its first half slowly, the
+    // rest catches up (delay peaks at 0.1 beat = 0.025 cycle).
+    let mut swing = Vec::new();
+    for b in 0..4 {
+        let x = b as f32 * 0.25;
+        swing.push(Point::new(x, 0.0));
+        swing.push(Point::new(x + 0.25 * 0.6, 0.025));
+    }
+
+    let patterns = vec![
+        Pattern::flat("Off"),
+        // y = x / 2: the bar's first half stretched over the whole bar.
+        named("Halftime", vec![Point::new(0.0, 0.0), Point::new(1.0, 0.5)]),
+        // Last quarter: the 1/8 before it plays twice more.
+        steps("Stutter 1/8 end", &[(0.0, 0.0), (0.75, 0.125), (0.875, 0.25)]),
+        // Second half on the 12-step triplet grid: two triplet-8th rolls (A A A, B B B).
+        steps(
+            "Triplet stutter 1/12",
+            &[
+                (0.0, 0.0),
+                (7.0 / 12.0, 1.0 / 12.0),
+                (8.0 / 12.0, 2.0 / 12.0),
+                (9.0 / 12.0, 0.0),
+                (10.0 / 12.0, 1.0 / 12.0),
+                (11.0 / 12.0, 2.0 / 12.0),
+            ],
+        ),
+        steps("Stutter roll", &roll),
+        // Beat 4 decelerates linearly to a stop (quadratic delay curve, tension 1/3 = t^2).
+        named(
+            "Tape stop",
+            vec![Point::new(0.0, 0.0), Point::curve(0.75, 0.0, 1.0 / 3.0), Point::new(1.0, 0.125)],
+        ),
+        // Beat 4: delay rises with slope 2, so beat 3 plays backwards at normal speed.
+        named(
+            "Reverse beat 4",
+            vec![Point::new(0.0, 0.0), Point::new(0.75, 0.0), Point::new(1.0, 0.5)],
+        ),
+        // Beats 1 1 3 3: each beat-long hold repeats the beat before it.
+        steps("Repeat 1-1-3-3", &[(0.0, 0.0), (0.25, 0.25), (0.5, 0.0), (0.75, 0.25)]),
+        steps("Stairs 1/16", &stairs),
+        named("Swing drag", swing),
+        // Beat 3 replays beat 1 (1 2 1 4).
+        steps("Beat 1 on 3", &[(0.0, 0.0), (0.5, 0.5), (0.75, 0.0)]),
+        // Two gentle S-curve swells per bar: about +-5% speed, a soft tape wobble.
+        named(
+            "Wobble",
+            vec![scurve(0.0, 0.0), scurve(0.25, 0.008), scurve(0.5, 0.0), scurve(0.75, 0.008)],
+        ),
+    ];
+    debug_assert_eq!(patterns.len(), NUM_PATTERNS);
     PatternBank { patterns }
 }
 
@@ -216,6 +290,28 @@ mod tests {
         for i in 0..50 {
             assert_eq!(b.patterns[0].value_at(i as f32 / 50.0, 0.0), 0.0);
         }
+    }
+
+    #[test]
+    fn factory_patterns_finite_and_in_range() {
+        let bank = factory_bank();
+        assert_eq!(bank.patterns.len(), NUM_PATTERNS);
+        assert_eq!(bank.patterns[0].name, "Off");
+        for p in &bank.patterns {
+            assert!(!p.points.is_empty() && p.points.len() <= MAX_POINTS, "{}", p.name);
+            // Already sanitized: sanitize must not change anything.
+            let mut q = p.clone();
+            q.sanitize();
+            assert_eq!(&q, p, "{} not sanitized", p.name);
+            for tension in [-1.0, 0.0, 1.0] {
+                for i in 0..1000 {
+                    let y = p.value_at(i as f32 / 1000.0, tension);
+                    assert!(y.is_finite() && (0.0..=1.0).contains(&y), "{} at {i}: {y}", p.name);
+                }
+            }
+        }
+        let names: std::collections::HashSet<_> = bank.patterns.iter().map(|p| &p.name).collect();
+        assert_eq!(names.len(), NUM_PATTERNS, "names must be unique");
     }
 
     #[test]
