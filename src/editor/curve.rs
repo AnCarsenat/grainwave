@@ -161,7 +161,7 @@ fn pattern_buttons(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual: &V
             Color32::from_rgb(0x2c, 0x27, 0x23)
         };
         painter.rect_filled(r, 3.0, fill);
-        let stroke = if i == viewed { Stroke::new(1.5, C_TIME) } else { Stroke::new(1.0, PANEL_EDGE) };
+        let stroke = if i == viewed { Stroke::new(1.5_f32, C_TIME) } else { Stroke::new(1.0_f32, PANEL_EDGE) };
         painter.rect_stroke(r, 3.0, stroke, StrokeKind::Inside);
         let num_w = if w > 40.0 { 15.0 } else { w };
         painter.text(
@@ -183,7 +183,7 @@ fn pattern_buttons(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual: &V
                     })
                     .collect();
                 let c = if is_active { C_TIME } else { TEXT_DIM };
-                painter.add(Shape::line(pts, Stroke::new(1.0, c)));
+                painter.add(Shape::line(pts, Stroke::new(1.0_f32, c)));
             }
         }
         let name = bank.patterns.get(i).map(|p| p.name.as_str()).unwrap_or("");
@@ -351,13 +351,13 @@ fn curve_canvas(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual: &Visu
         let x = k as f32 / div as f32;
         let quarter = (x * 4.0 - (x * 4.0).round()).abs() < 1e-4;
         let c = if quarter { GRID_LINE_STRONG } else { GRID_LINE };
-        painter.line_segment([to_screen(x, 0.0), to_screen(x, 1.0)], Stroke::new(1.0, c));
+        painter.line_segment([to_screen(x, 0.0), to_screen(x, 1.0)], Stroke::new(1.0_f32, c));
     }
     for k in 1..4 {
         let y = k as f32 / 4.0;
-        painter.line_segment([to_screen(0.0, y), to_screen(1.0, y)], Stroke::new(1.0, GRID_LINE));
+        painter.line_segment([to_screen(0.0, y), to_screen(1.0, y)], Stroke::new(1.0_f32, GRID_LINE));
     }
-    painter.line_segment([to_screen(0.0, 0.0), to_screen(1.0, 0.0)], Stroke::new(1.0, GRID_LINE_STRONG));
+    painter.line_segment([to_screen(0.0, 0.0), to_screen(1.0, 0.0)], Stroke::new(1.0_f32, GRID_LINE_STRONG));
 
     // Curve: sampled `value_at` with the global tension, filled underneath.
     let tension = params.time.tension.value();
@@ -377,7 +377,7 @@ fn curve_canvas(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual: &Visu
             Stroke::NONE,
         ));
     }
-    painter.add(Shape::line(samples, Stroke::new(2.0, C_TIME)));
+    painter.add(Shape::line(samples, Stroke::new(2.0_f32, C_TIME)));
 
     // Playback cursor (bright when the viewed pattern is the one playing).
     let active = visual.ts_active.load(Ordering::Relaxed) as usize == idx;
@@ -385,7 +385,7 @@ fn curve_canvas(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual: &Visu
     if cur.is_finite() && params.sections.time.value() {
         let x = cur.clamp(0.0, 1.0);
         let c = if active { TEXT } else { TEXT_DIM.gamma_multiply(0.5) };
-        painter.line_segment([to_screen(x, 0.0), to_screen(x, 1.0)], Stroke::new(1.0, c));
+        painter.line_segment([to_screen(x, 0.0), to_screen(x, 1.0)], Stroke::new(1.0_f32, c));
         let v = load_f32(&visual.ts_value);
         if active && v.is_finite() {
             painter.circle_filled(to_screen(x, v.clamp(0.0, 1.0)), 4.0, TEXT);
@@ -430,11 +430,11 @@ fn curve_canvas(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual: &Visu
 
     painter.text(inner.left_bottom() + vec2(2.0, -2.0), Align2::LEFT_BOTTOM, "live", FontId::proportional(9.5), TEXT_DIM);
     painter.text(inner.left_top() + vec2(2.0, 2.0), Align2::LEFT_TOP, "1 cycle back", FontId::proportional(9.5), TEXT_DIM);
-    painter.rect_stroke(rect, 4.0, Stroke::new(1.0, PANEL_EDGE), StrokeKind::Inside);
+    painter.rect_stroke(rect, 4.0, Stroke::new(1.0_f32, PANEL_EDGE), StrokeKind::Inside);
 }
 
 fn draw_point(painter: &egui::Painter, c: Pos2, r: f32, kind: SegmentKind, fill: Color32) {
-    let stroke = Stroke::new(1.0, WELL);
+    let stroke = Stroke::new(1.0_f32, WELL);
     match kind {
         SegmentKind::Curve => {
             painter.circle(c, r, fill, stroke);

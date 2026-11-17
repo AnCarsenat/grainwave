@@ -108,7 +108,7 @@ pub fn advanced_page(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &Visu
     let body = Rect::from_min_max(pos2(rect.left(), rect.top() + TAB_H + 4.0), rect.max);
     let painter = ui.painter_at(body);
     painter.rect_filled(body, 5.0, PANEL);
-    painter.rect_stroke(body, 5.0, Stroke::new(1.0, PANEL_EDGE), StrokeKind::Inside);
+    painter.rect_stroke(body, 5.0, Stroke::new(1.0_f32, PANEL_EDGE), StrokeKind::Inside);
     let inner = body.shrink(PAD);
     let header = Rect::from_min_size(inner.min, vec2(inner.width(), HEADER_H));
     tab_header(ui, header, p, s, state);
@@ -333,9 +333,9 @@ fn gate_grid(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState,
         let painter = ui.painter();
         painter.rect_filled(cell, 3.0, fill);
         if gate_on && i == current {
-            painter.rect_stroke(cell.expand(1.0), 3.0, Stroke::new(2.0, TEXT), StrokeKind::Outside);
+            painter.rect_stroke(cell.expand(1.0), 3.0, Stroke::new(2.0_f32, TEXT), StrokeKind::Outside);
         } else if resp.hovered() {
-            painter.rect_stroke(cell, 3.0, Stroke::new(1.0, TEXT_DIM), StrokeKind::Inside);
+            painter.rect_stroke(cell, 3.0, Stroke::new(1.0_f32, TEXT_DIM), StrokeKind::Inside);
         }
         resp.on_hover_text(format!("Gate step {}", i + 1));
     }
@@ -412,7 +412,7 @@ fn modulation_tab(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualS
 fn waveform(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState, s: &ParamSetter) {
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, WELL);
-    painter.rect_stroke(rect, 4.0, Stroke::new(1.0, PANEL_EDGE), StrokeKind::Inside);
+    painter.rect_stroke(rect, 4.0, Stroke::new(1.0_f32, PANEL_EDGE), StrokeKind::Inside);
 
     let frozen = p.input.freeze.value();
     let inner = rect.shrink(6.0);
@@ -420,9 +420,9 @@ fn waveform(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState, 
     let half = inner.height() * 0.5;
     for k in 1..8 {
         let x = inner.left() + inner.width() * k as f32 / 8.0;
-        painter.line_segment([pos2(x, inner.top()), pos2(x, inner.bottom())], Stroke::new(1.0, GRID_LINE));
+        painter.line_segment([pos2(x, inner.top()), pos2(x, inner.bottom())], Stroke::new(1.0_f32, GRID_LINE));
     }
-    painter.line_segment([pos2(inner.left(), mid), pos2(inner.right(), mid)], Stroke::new(1.0, PANEL_EDGE));
+    painter.line_segment([pos2(inner.left(), mid), pos2(inner.right(), mid)], Stroke::new(1.0_f32, PANEL_EDGE));
 
     let wave_color = if frozen { Color32::from_rgb(0x7e, 0x93, 0x9a) } else { WAVE };
     let slice_w = inner.width() / WAVEFORM_POINTS as f32;
@@ -441,7 +441,7 @@ fn waveform(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState, 
     if wh.is_finite() {
         let x = inner.left() + wh.clamp(0.0, 1.0) * inner.width();
         let c = if frozen { TEXT_DIM } else { HOT };
-        painter.line_segment([pos2(x, inner.top()), pos2(x, inner.bottom())], Stroke::new(1.5, c));
+        painter.line_segment([pos2(x, inner.top()), pos2(x, inner.bottom())], Stroke::new(1.5_f32, c));
     }
 
     let active = visual.grain_active.load(Ordering::Relaxed);
@@ -459,7 +459,7 @@ fn waveform(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState, 
         let y = inner.top() + 8.0 + lane * (inner.height() - 16.0);
         let rev = reverse & (1 << i) != 0;
         let c = if rev { ACCENT_2 } else { ACCENT };
-        painter.line_segment([pos2(x, y - 6.0), pos2(x, y + 6.0)], Stroke::new(1.0, c.gamma_multiply(0.6)));
+        painter.line_segment([pos2(x, y - 6.0), pos2(x, y + 6.0)], Stroke::new(1.0_f32, c.gamma_multiply(0.6)));
         if rev {
             painter.add(Shape::convex_polygon(
                 vec![pos2(x - 4.0, y), pos2(x + 3.0, y - 4.0), pos2(x + 3.0, y + 4.0)],

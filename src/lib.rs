@@ -10,6 +10,10 @@
 //!
 //! OWNERSHIP: shared file (coordinator).
 
+// nih-plug's `nih_export_vst3!` ends in a statement-position semicolon that newer rustc
+// flags as future-incompatible; it's upstream code we can't change here.
+#![allow(semicolon_in_expressions_from_non_local_macros)]
+
 use nih_plug::prelude::*;
 use std::num::NonZeroU32;
 use std::sync::atomic::Ordering;

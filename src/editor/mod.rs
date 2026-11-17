@@ -132,7 +132,7 @@ fn draw(ui: &mut Ui, p: &GrainwaveParams, visual: &VisualState, s: &ParamSetter,
     top_bar(ui, top, p, s, state);
     ui.painter().line_segment(
         [pos2(area.left(), top.bottom() + GAP * 0.5), pos2(area.right(), top.bottom() + GAP * 0.5)],
-        Stroke::new(1.0, PANEL_EDGE),
+        Stroke::new(1.0_f32, PANEL_EDGE),
     );
     let content = Rect::from_min_max(pos2(area.left(), top.bottom() + GAP), area.max);
 
@@ -166,7 +166,7 @@ fn top_bar(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, s: &ParamSetter, state:
     let cy = rect.center().y;
     let row = |x: f32, w: f32| Rect::from_min_size(pos2(x, cy - 11.0), vec2(w, 22.0));
     let sep = |ui: &Ui, x: f32| {
-        ui.painter().line_segment([pos2(x, rect.top() + 6.0), pos2(x, rect.bottom() - 6.0)], Stroke::new(1.0, PANEL_EDGE));
+        ui.painter().line_segment([pos2(x, rect.top() + 6.0), pos2(x, rect.bottom() - 6.0)], Stroke::new(1.0_f32, PANEL_EDGE));
     };
 
     // Right group: Limiter, Output, Mix.

@@ -72,7 +72,7 @@ pub fn sequencer_grid(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual:
         if active {
             painter.circle_filled(led, led_r, color);
         } else {
-            painter.circle_stroke(led, led_r, Stroke::new(1.0, TEXT_DIM));
+            painter.circle_stroke(led, led_r, Stroke::new(1.0_f32, TEXT_DIM));
         }
         let font = (row_h * 0.75).clamp(8.0, 11.5);
         painter.text(
@@ -154,7 +154,7 @@ pub fn sequencer_grid(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual:
             };
             painter.rect_filled(cell, 2.0, fill);
             if hover == Some((lane, step)) {
-                painter.rect_stroke(cell, 2.0, Stroke::new(1.0, TEXT), StrokeKind::Inside);
+                painter.rect_stroke(cell, 2.0, Stroke::new(1.0_f32, TEXT), StrokeKind::Inside);
             }
         }
     }
@@ -162,7 +162,7 @@ pub fn sequencer_grid(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual:
     if let (true, Some(step)) = (seq_on, cur_step) {
         let x0 = col_x(step);
         let col = Rect::from_min_max(pos2(x0 - 1.0, rect.top() - 1.0), pos2(x0 + cell_w + 1.0, rect.bottom() + 1.0));
-        painter.rect_stroke(col, 3.0, Stroke::new(1.5, TEXT), StrokeKind::Outside);
+        painter.rect_stroke(col, 3.0, Stroke::new(1.5_f32, TEXT), StrokeKind::Outside);
     }
     resp.on_hover_text("Click: toggle step · drag: paint · beats of 4 are shaded");
 }

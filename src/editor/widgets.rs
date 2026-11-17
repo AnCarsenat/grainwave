@@ -110,7 +110,7 @@ fn draw_knob(painter: &egui::Painter, center: Pos2, radius: f32, norm: f32, bipo
     }
     let a = start + sweep * norm;
     let dir = vec2(a.cos(), a.sin());
-    painter.line_segment([center + dir * (radius * 0.2), center + dir * (radius - w - 1.0)], Stroke::new(2.0, TEXT));
+    painter.line_segment([center + dir * (radius * 0.2), center + dir * (radius - w - 1.0)], Stroke::new(2.0_f32, TEXT));
 }
 
 fn arc(painter: &egui::Painter, c: Pos2, r: f32, a0: f32, a1: f32, stroke: Stroke) {
@@ -144,7 +144,7 @@ pub fn slider<P: Param>(ui: &mut Ui, rect: Rect, param: &P, s: &ParamSetter, col
     };
     let c = if resp.hovered() || resp.dragged() { color } else { color.gamma_multiply(0.8) };
     painter.rect_filled(fill, 3.0, c);
-    painter.rect_stroke(rect, 3.0, Stroke::new(1.0, PANEL_EDGE), StrokeKind::Inside);
+    painter.rect_stroke(rect, 3.0, Stroke::new(1.0_f32, PANEL_EDGE), StrokeKind::Inside);
     resp.on_hover_text(format!("{}: {}\nDrag (Shift: fine), double-click to reset", param.name(), param))
 }
 
@@ -162,7 +162,7 @@ pub fn toggle(ui: &mut Ui, rect: Rect, param: &BoolParam, s: &ParamSetter, label
     let painter = ui.painter_at(rect);
     let fill = if on { dim(color, 0.35) } else if resp.hovered() { Color32::from_rgb(0x45, 0x3c, 0x34) } else { Color32::from_rgb(0x33, 0x2d, 0x28) };
     painter.rect_filled(r, CornerRadius::same(4), fill);
-    painter.rect_stroke(r, CornerRadius::same(4), Stroke::new(1.0, if on { color } else { PANEL_EDGE }), StrokeKind::Inside);
+    painter.rect_stroke(r, CornerRadius::same(4), Stroke::new(1.0_f32, if on { color } else { PANEL_EDGE }), StrokeKind::Inside);
     painter.text(r.center(), Align2::CENTER_CENTER, label, FontId::proportional(11.0), if on { color } else { TEXT });
     resp.on_hover_text(param.name())
 }
@@ -186,7 +186,7 @@ pub fn power(ui: &mut Ui, rect: Rect, param: &BoolParam, s: &ParamSetter, label:
         painter.circle_filled(led, 4.0, color);
     } else {
         painter.circle_filled(led, 4.0, KNOB_TRACK);
-        painter.circle_stroke(led, 4.0, Stroke::new(1.0, TEXT_DIM));
+        painter.circle_stroke(led, 4.0, Stroke::new(1.0_f32, TEXT_DIM));
     }
     painter.text(
         pos2(rect.left() + 17.0, rect.center().y),
@@ -257,7 +257,7 @@ pub fn momentary(ui: &mut Ui, rect: Rect, param: &BoolParam, s: &ParamSetter, la
     let painter = ui.painter_at(rect);
     let fill = if on { HOT } else if resp.hovered() { Color32::from_rgb(0x45, 0x3c, 0x34) } else { Color32::from_rgb(0x33, 0x2d, 0x28) };
     painter.rect_filled(rect, 6.0, fill);
-    painter.rect_stroke(rect, 6.0, Stroke::new(1.0, if on { HOT } else { PANEL_EDGE }), StrokeKind::Inside);
+    painter.rect_stroke(rect, 6.0, Stroke::new(1.0_f32, if on { HOT } else { PANEL_EDGE }), StrokeKind::Inside);
     painter.text(rect.center(), Align2::CENTER_CENTER, label, FontId::proportional(13.0), if on { BG } else { TEXT });
     resp.on_hover_text("Hold");
 }
@@ -298,7 +298,7 @@ pub fn meter(painter: &egui::Painter, rect: Rect, value: f32, bipolar: bool, col
 pub fn group_box(ui: &Ui, rect: Rect, title: &str, color: Color32) -> Rect {
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 5.0, PANEL);
-    painter.rect_stroke(rect, 5.0, Stroke::new(1.0, PANEL_EDGE), StrokeKind::Inside);
+    painter.rect_stroke(rect, 5.0, Stroke::new(1.0_f32, PANEL_EDGE), StrokeKind::Inside);
     painter.rect_filled(Rect::from_min_size(rect.min + vec2(PAD, 6.0), vec2(3.0, 10.0)), 1.0, color);
     painter.text(rect.min + vec2(PAD + 7.0, 4.0), Align2::LEFT_TOP, title, FontId::proportional(11.0), color);
     Rect::from_min_max(rect.min + vec2(PAD, 19.0), rect.max - vec2(PAD, PAD))

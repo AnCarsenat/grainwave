@@ -72,7 +72,7 @@ pub fn tab_button(ui: &mut Ui, r: Rect, label: &str, selected: bool, color: Colo
 fn panel_frame(ui: &Ui, rect: Rect) {
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 5.0, PANEL);
-    painter.rect_stroke(rect, 5.0, Stroke::new(1.0, PANEL_EDGE), StrokeKind::Inside);
+    painter.rect_stroke(rect, 5.0, Stroke::new(1.0_f32, PANEL_EDGE), StrokeKind::Inside);
 }
 
 /// Time shaper: curve editor on the left, Sync/Trigger/Quantize and Depth/Smooth/Mix on the right.
@@ -129,7 +129,7 @@ fn unit(
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 6.0, PANEL);
     let edge = if is_on { dim(color, 0.25 + 0.45 * level) } else { PANEL_EDGE };
-    painter.rect_stroke(rect, 6.0, Stroke::new(1.0, edge), StrokeKind::Inside);
+    painter.rect_stroke(rect, 6.0, Stroke::new(1.0_f32, edge), StrokeKind::Inside);
     // Colored strip on top: the pedal's face.
     painter.rect_filled(
         Rect::from_min_size(rect.min + vec2(1.0, 1.0), vec2(rect.width() - 2.0, 3.0)),

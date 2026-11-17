@@ -51,21 +51,21 @@ pub fn apply_theme(ctx: &Context) {
     v.faint_bg_color = PANEL;
     v.override_text_color = Some(TEXT);
     v.selection.bg_fill = Color32::from_rgb(0x6e, 0x4c, 0x2a);
-    v.selection.stroke = Stroke::new(1.0, ACCENT);
+    v.selection.stroke = Stroke::new(1.0_f32, ACCENT);
     v.hyperlink_color = ACCENT;
     let w = &mut v.widgets;
     w.noninteractive.bg_fill = PANEL;
-    w.noninteractive.bg_stroke = Stroke::new(1.0, PANEL_EDGE);
-    w.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
+    w.noninteractive.bg_stroke = Stroke::new(1.0_f32, PANEL_EDGE);
+    w.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT);
     w.inactive.bg_fill = Color32::from_rgb(0x33, 0x2d, 0x28);
     w.inactive.weak_bg_fill = Color32::from_rgb(0x33, 0x2d, 0x28);
-    w.inactive.fg_stroke = Stroke::new(1.0, TEXT);
+    w.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT);
     w.hovered.bg_fill = Color32::from_rgb(0x45, 0x3c, 0x34);
     w.hovered.weak_bg_fill = Color32::from_rgb(0x45, 0x3c, 0x34);
-    w.hovered.bg_stroke = Stroke::new(1.0, ACCENT);
+    w.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     w.active.bg_fill = Color32::from_rgb(0x55, 0x47, 0x3a);
     w.active.weak_bg_fill = Color32::from_rgb(0x55, 0x47, 0x3a);
-    w.active.bg_stroke = Stroke::new(1.0, ACCENT);
+    w.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     ctx.set_visuals(v);
     ctx.style_mut(|s| {
         s.spacing.item_spacing = vec2(6.0, 4.0);
