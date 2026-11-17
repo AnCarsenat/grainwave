@@ -6,6 +6,7 @@ the design; these files record the details.
 
 | Module | Doc | Source |
 |---|---|---|
+| Time shaper, patterns | [timeshape.md](timeshape.md) | `src/dsp/timeshape.rs`, `src/pattern.rs` |
 | Grain engine, channel modes | [grains.md](grains.md) | `src/dsp/grains.rs`, `src/dsp/input.rs` |
 | Rhythm and performance | [rhythm.md](rhythm.md) | `src/dsp/rhythm.rs` |
 | Degrade chain, filter | [degrade.md](degrade.md) | `src/dsp/degrade/`, `src/dsp/filter.rs` |
