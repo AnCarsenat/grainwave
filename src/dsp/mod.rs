@@ -16,6 +16,7 @@ pub mod output;
 pub mod rhythm;
 pub mod rng;
 pub mod space;
+pub mod timeshape;
 
 /// Host timing for the current block.
 #[derive(Debug, Clone, Copy)]

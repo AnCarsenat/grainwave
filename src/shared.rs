@@ -23,6 +23,15 @@ pub struct VisualState {
     /// Current step of the 16-step gate (0..15). Plain integer, NOT f32 bits:
     /// read with `.load(Ordering::Relaxed)`, never `load_f32`.
     pub gate_step: AtomicU32,
+    /// Time shaper cursor, 0..1 within the current cycle (f32 bits).
+    pub ts_cursor: AtomicU32,
+    /// Time shaper current read offset y after smoothing, 0..1 (f32 bits).
+    pub ts_value: AtomicU32,
+    /// Active time pattern index 0..11 after quantized switching. Plain integer.
+    pub ts_active: AtomicU32,
+    /// Section output gains 0..1 (f32 bits), for dimming bypassed panels:
+    /// [time, grains, rhythm, degrade, filter, space].
+    pub section_gain: [AtomicU32; 6],
 }
 
 impl Default for VisualState {
@@ -36,6 +45,10 @@ impl Default for VisualState {
             lfo_values: std::array::from_fn(|_| AtomicU32::new(0)),
             env_value: AtomicU32::new(0),
             gate_step: AtomicU32::new(0),
+            ts_cursor: AtomicU32::new(0),
+            ts_value: AtomicU32::new(0),
+            ts_active: AtomicU32::new(0),
+            section_gain: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
 }

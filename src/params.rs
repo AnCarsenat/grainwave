@@ -340,7 +340,7 @@ pub struct PlaybackParams {
 impl Default for PlaybackParams {
     fn default() -> Self {
         Self {
-            reverse_chance: percent("Reverse chance", 0.25),
+            reverse_chance: percent("Reverse chance", 0.0),
             pitch_st: FloatParam::new("Pitch", 0.0, FloatRange::Linear { min: -24.0, max: 24.0 })
                 .with_unit(" st")
                 .with_value_to_string(formatters::v2s_f32_rounded(2)),
@@ -702,6 +702,192 @@ impl Default for OutputParams {
     }
 }
 
+/// Per-section power switches. Off = the section is crossfaded out over ~10 ms but keeps
+/// running underneath, so switching it back on never replays stale audio.
+#[derive(Params)]
+pub struct SectionParams {
+    #[id = "on_time"]
+    pub time: BoolParam,
+    #[id = "on_grain"]
+    pub grains: BoolParam,
+    /// How much of the grain engine replaces the signal (0 = untouched). Same crossfade as the switch.
+    #[id = "g_amt"]
+    pub grain_amount: FloatParam,
+    #[id = "on_rhythm"]
+    pub rhythm: BoolParam,
+    #[id = "on_degrade"]
+    pub degrade: BoolParam,
+    #[id = "on_filter"]
+    pub filter: BoolParam,
+    #[id = "on_space"]
+    pub space: BoolParam,
+    #[id = "on_mod"]
+    pub modulation: BoolParam,
+}
+
+impl Default for SectionParams {
+    fn default() -> Self {
+        Self {
+            time: BoolParam::new("Time on", true),
+            grains: BoolParam::new("Grains on", true),
+            grain_amount: percent("Grain amount", 0.0),
+            rhythm: BoolParam::new("Rhythm on", true),
+            degrade: BoolParam::new("Degrade on", true),
+            filter: BoolParam::new("Filter on", true),
+            space: BoolParam::new("Space on", true),
+            modulation: BoolParam::new("Modulation on", true),
+        }
+    }
+}
+
+#[derive(Enum, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TimeSync {
+    #[name = "1/16"]
+    Sixteenth,
+    #[name = "1/8"]
+    Eighth,
+    #[name = "1/4"]
+    Quarter,
+    #[name = "1/2"]
+    Half,
+    #[name = "1/1"]
+    Bar,
+    #[name = "2/1"]
+    TwoBars,
+    #[name = "4/1"]
+    FourBars,
+    #[name = "1/16T"]
+    SixteenthTriplet,
+    #[name = "1/8T"]
+    EighthTriplet,
+    #[name = "1/4T"]
+    QuarterTriplet,
+    #[name = "1/2T"]
+    HalfTriplet,
+    #[name = "1/16."]
+    SixteenthDotted,
+    #[name = "1/8."]
+    EighthDotted,
+    #[name = "1/4."]
+    QuarterDotted,
+}
+
+impl TimeSync {
+    /// Cycle length in quarter-note beats.
+    pub fn beats(self) -> f64 {
+        match self {
+            TimeSync::Sixteenth => 0.25,
+            TimeSync::Eighth => 0.5,
+            TimeSync::Quarter => 1.0,
+            TimeSync::Half => 2.0,
+            TimeSync::Bar => 4.0,
+            TimeSync::TwoBars => 8.0,
+            TimeSync::FourBars => 16.0,
+            TimeSync::SixteenthTriplet => 0.25 * 2.0 / 3.0,
+            TimeSync::EighthTriplet => 0.5 * 2.0 / 3.0,
+            TimeSync::QuarterTriplet => 2.0 / 3.0,
+            TimeSync::HalfTriplet => 4.0 / 3.0,
+            TimeSync::SixteenthDotted => 0.375,
+            TimeSync::EighthDotted => 0.75,
+            TimeSync::QuarterDotted => 1.5,
+        }
+    }
+}
+
+#[derive(Enum, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TimeTrigger {
+    /// Cycle follows the host playhead.
+    Sync,
+    /// Any MIDI note restarts the cycle; it runs once then holds.
+    #[name = "MIDI"]
+    Midi,
+}
+
+#[derive(Enum, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum PatternQuantize {
+    Off,
+    #[name = "1/4 beat"]
+    QuarterBeat,
+    #[name = "1/2 beat"]
+    HalfBeat,
+    #[name = "1 beat"]
+    Beat,
+    #[name = "2 beats"]
+    TwoBeats,
+    #[name = "1 bar"]
+    Bar,
+}
+
+impl PatternQuantize {
+    /// Switch grid in beats, `None` = immediate.
+    pub fn beats(self) -> Option<f64> {
+        match self {
+            PatternQuantize::Off => None,
+            PatternQuantize::QuarterBeat => Some(0.25),
+            PatternQuantize::HalfBeat => Some(0.5),
+            PatternQuantize::Beat => Some(1.0),
+            PatternQuantize::TwoBeats => Some(2.0),
+            PatternQuantize::Bar => Some(4.0),
+        }
+    }
+}
+
+#[derive(Enum, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum AntiClick {
+    Off,
+    Low,
+    Medium,
+    High,
+}
+
+/// Time shaper: a drawn curve per cycle sets how far behind live the playback reads.
+/// y = 0 plays live (dry), a rising slope of 1 holds/repeats, a slope of 0.5 is half speed,
+/// steps jump back (stutter). The 12 patterns themselves live in `pattern.rs`.
+#[derive(Params)]
+pub struct TimeParams {
+    #[id = "ts_pat"]
+    pub pattern: IntParam,
+    #[id = "ts_sync"]
+    pub sync: EnumParam<TimeSync>,
+    #[id = "ts_trig"]
+    pub trigger: EnumParam<TimeTrigger>,
+    #[id = "ts_patq"]
+    pub pattern_quantize: EnumParam<PatternQuantize>,
+    #[id = "ts_midisw"]
+    pub midi_switch: BoolParam,
+    #[id = "ts_depth"]
+    pub depth: FloatParam,
+    #[id = "ts_phase"]
+    pub phase: FloatParam,
+    #[id = "ts_tension"]
+    pub tension: FloatParam,
+    #[id = "ts_smooth"]
+    pub smooth: FloatParam,
+    #[id = "ts_aclick"]
+    pub anti_click: EnumParam<AntiClick>,
+    #[id = "ts_mix"]
+    pub mix: FloatParam,
+}
+
+impl Default for TimeParams {
+    fn default() -> Self {
+        Self {
+            pattern: IntParam::new("Time pattern", 1, IntRange::Linear { min: 1, max: 12 }),
+            sync: EnumParam::new("Time sync", TimeSync::Bar),
+            trigger: EnumParam::new("Time trigger", TimeTrigger::Sync),
+            pattern_quantize: EnumParam::new("Pattern quantize", PatternQuantize::Beat),
+            midi_switch: BoolParam::new("MIDI switches pattern", true),
+            depth: percent("Time depth", 1.0),
+            phase: percent("Time phase", 0.0),
+            tension: FloatParam::new("Time tension", 0.0, FloatRange::Linear { min: -1.0, max: 1.0 })
+                .with_value_to_string(formatters::v2s_f32_rounded(2)),
+            smooth: percent("Time smooth", 0.0),
+            anti_click: EnumParam::new("Anti-click", AntiClick::Medium),
+            mix: percent("Time mix", 1.0),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Root
 // ---------------------------------------------------------------------------
@@ -710,6 +896,17 @@ impl Default for OutputParams {
 pub struct GrainwaveParams {
     #[persist = "editor-state"]
     pub editor_state: Arc<EguiState>,
+    /// The 12 editable time-shaper patterns. GUI writes (then bumps `pattern_version`),
+    /// audio thread copies with `try_read` when the version changes. See `pattern.rs`.
+    #[persist = "time-patterns"]
+    pub time_patterns: Arc<std::sync::RwLock<crate::pattern::PatternBank>>,
+    /// Not persisted. Bumped by whoever writes `time_patterns`.
+    pub pattern_version: Arc<std::sync::atomic::AtomicU32>,
+
+    #[nested(group = "Sections")]
+    pub sections: SectionParams,
+    #[nested(group = "Time")]
+    pub time: TimeParams,
 
     #[nested(group = "Input")]
     pub input: InputParams,
@@ -737,6 +934,10 @@ impl Default for GrainwaveParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(960, 640),
+            time_patterns: Arc::new(std::sync::RwLock::new(crate::pattern::PatternBank::default())),
+            pattern_version: Arc::new(std::sync::atomic::AtomicU32::new(1)),
+            sections: Default::default(),
+            time: Default::default(),
             input: Default::default(),
             grain: Default::default(),
             playback: Default::default(),
@@ -844,6 +1045,27 @@ pub struct Snapshot {
     pub env_amount: f32,
     pub env_attack_ms: f32,
     pub env_release_ms: f32,
+    // sections (read by lib.rs stage crossfades)
+    pub on_time: bool,
+    pub on_grains: bool,
+    pub grain_amount: f32,
+    pub on_rhythm: bool,
+    pub on_degrade: bool,
+    pub on_filter: bool,
+    pub on_space: bool,
+    pub on_modulation: bool,
+    // time shaper
+    pub ts_pattern: i32,
+    pub ts_sync: TimeSync,
+    pub ts_trigger: TimeTrigger,
+    pub ts_pattern_quantize: PatternQuantize,
+    pub ts_midi_switch: bool,
+    pub ts_depth: f32,
+    pub ts_phase: f32,
+    pub ts_tension: f32,
+    pub ts_smooth: f32,
+    pub ts_anti_click: AntiClick,
+    pub ts_mix: f32,
 }
 
 impl Snapshot {
@@ -941,6 +1163,27 @@ impl Snapshot {
             env_amount: p.modulation.env_amount.value(),
             env_attack_ms: p.modulation.env_attack_ms.value(),
             env_release_ms: p.modulation.env_release_ms.value(),
+
+            on_time: p.sections.time.value(),
+            on_grains: p.sections.grains.value(),
+            grain_amount: p.sections.grain_amount.value(),
+            on_rhythm: p.sections.rhythm.value(),
+            on_degrade: p.sections.degrade.value(),
+            on_filter: p.sections.filter.value(),
+            on_space: p.sections.space.value(),
+            on_modulation: p.sections.modulation.value(),
+
+            ts_pattern: p.time.pattern.value(),
+            ts_sync: p.time.sync.value(),
+            ts_trigger: p.time.trigger.value(),
+            ts_pattern_quantize: p.time.pattern_quantize.value(),
+            ts_midi_switch: p.time.midi_switch.value(),
+            ts_depth: p.time.depth.value(),
+            ts_phase: p.time.phase.value(),
+            ts_tension: p.time.tension.value(),
+            ts_smooth: p.time.smooth.value(),
+            ts_anti_click: p.time.anti_click.value(),
+            ts_mix: p.time.mix.value(),
         }
     }
 }
