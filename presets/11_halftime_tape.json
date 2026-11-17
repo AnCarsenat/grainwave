@@ -1,0 +1,15 @@
+{
+  "name": "Halftime Tape",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "d_bump": 0.2222,
+    "d_wowd": 0.15,
+    "d_wowr": 0.2756,
+    "f_lp": 0.88,
+    "m_age": 0.15,
+    "ts_pat": 0.0909,
+    "ts_smooth": 0.1,
+    "ts_sync": 0.3077
+  }
+}

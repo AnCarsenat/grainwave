@@ -3,21 +3,22 @@
   "author": "Grainwave",
   "version": 1,
   "params": {
-    "d_age": 0.55,
+    "d_age": 0.4,
     "d_bump": 0.4444,
-    "d_drive": 0.45,
-    "d_dropch": 0.25,
+    "d_drive": 0.35,
+    "d_dropch": 0.1,
     "d_dropd": 0.7,
     "d_fld": 0.3,
-    "d_hiss": 0.25,
+    "d_hiss": 0.12,
     "d_order": 0.5,
     "d_satm": 0.0,
-    "d_wowd": 0.6,
+    "d_wowd": 0.4,
     "d_wowr": 0.4057,
+    "g_amt": 0.8,
     "g_dens": 0.2817,
     "g_size": 0.8802,
     "p_rev": 0.1,
-    "p_start": 0.25,
-    "p_stop": 0.45
+    "p_start": 0.15,
+    "p_stop": 0.25
   }
 }

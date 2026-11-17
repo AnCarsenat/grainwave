@@ -12,13 +12,14 @@
     "d_srate": 0.7528,
     "f_hp": 0.2115,
     "f_lp": 0.8188,
+    "g_amt": 0.7,
     "g_ddiv": 0.2,
     "g_dmode": 1.0,
     "g_jit": 0.05,
     "g_size": 0.6924,
-    "p_rev": 0.2,
-    "p_stop": 0.1,
-    "r_stch": 0.45,
+    "p_rev": 0.1,
+    "p_stop": 0.05,
+    "r_stch": 0.35,
     "r_stut": 0.4,
     "r_swing": 0.3
   }

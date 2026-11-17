@@ -1,0 +1,9 @@
+{
+  "name": "Clean Stairs",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "ts_pat": 0.7273,
+    "ts_sync": 0.3077
+  }
+}

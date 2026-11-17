@@ -1,0 +1,22 @@
+{
+  "name": "Space Throws",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "s_dldiv": 0.2,
+    "s_dlfb": 0.5263,
+    "s_dlmix": 0.4,
+    "s_rvmix": 0.55,
+    "s_rvsize": 0.85,
+    "sq_on": 1.0,
+    "sq_rate": 0.4
+  },
+  "seq_lanes": [
+    65535,
+    65535,
+    65535,
+    65535,
+    65535,
+    77872
+  ]
+}
