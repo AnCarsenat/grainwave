@@ -1,0 +1,28 @@
+{
+  "name": "Frozen Pad",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "amt_1": 0.7,
+    "amt_2": 0.575,
+    "f_lp": 0.7688,
+    "g_dens": 0.6547,
+    "g_env": 0.0,
+    "g_jit": 0.8,
+    "g_mem": 1.0,
+    "g_size": 0.9631,
+    "g_spread": 1.0,
+    "g_voices": 0.7419,
+    "hz_1": 0.259,
+    "hz_2": 0.2893,
+    "p_pjit": 1.0,
+    "p_quant": 0.2,
+    "p_rev": 0.5,
+    "s_rvmix": 0.55,
+    "s_rvsize": 0.95,
+    "shape_1": 1.0,
+    "shape_2": 0.0,
+    "target_1": 0.1429,
+    "target_2": 0.8095
+  }
+}
