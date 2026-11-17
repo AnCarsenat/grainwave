@@ -12,9 +12,20 @@
 //! Applying a preset sets every preset-able parameter: IDs present in the file get the stored
 //! value, missing IDs get their default. Performance controls (`freeze`, `r_rewind`, `r_tstop`)
 //! are never stored in or changed by presets.
+//!
+//! Two optional extras (not parameters):
+//! - `"time_patterns"`: a full `PatternBank` (12 curves). When present it replaces the bank
+//!   (write lock, sanitize, `pattern_version` bump); when absent the bank is left alone.
+//! - `"seq_lanes"`: six FX sequencer lane words `[time, grains, rhythm, degrade, filter, space]`
+//!   (bits 0..15 steps, bit 16 lane active). When present they are stored; when absent the
+//!   lanes are left alone.
+//!
+//! `capture` writes both, so user presets restore exactly what was saved.
 
-use crate::params::GrainwaveParams;
+use crate::params::{GrainwaveParams, SEQ_LANES};
+use crate::pattern::PatternBank;
 use nih_plug::prelude::*;
+use std::sync::atomic::Ordering;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -37,6 +48,14 @@ const FACTORY_JSON: &[&str] = &[
     include_str!("../presets/08_frozen_pad.json"),
     include_str!("../presets/09_cassette_choir.json"),
     include_str!("../presets/10_gated_dust.json"),
+    include_str!("../presets/11_halftime_tape.json"),
+    include_str!("../presets/12_triplet_stutter.json"),
+    include_str!("../presets/13_end_of_bar_stop.json"),
+    include_str!("../presets/14_clean_stairs.json"),
+    include_str!("../presets/15_roll_out.json"),
+    include_str!("../presets/16_crush_every_4th.json"),
+    include_str!("../presets/17_space_throws.json"),
+    include_str!("../presets/18_filter_chops.json"),
 ];
 
 fn default_version() -> u32 {
@@ -53,6 +72,12 @@ pub struct Preset {
     /// Normalized values keyed by parameter ID.
     #[serde(default)]
     pub params: BTreeMap<String, f32>,
+    /// Optional full time-pattern bank; replaces the plugin's bank when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_patterns: Option<PatternBank>,
+    /// Optional FX sequencer lane words; replace the plugin's lanes when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq_lanes: Option<[u32; SEQ_LANES]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,11 +129,33 @@ pub fn capture(params: &GrainwaveParams, name: &str) -> Preset {
         let v = unsafe { ptr.unmodulated_normalized_value() };
         map.insert(id, round_normalized(v));
     }
+    let bank = params.time_patterns.read().unwrap_or_else(|e| e.into_inner()).clone();
     Preset {
         name: name.to_string(),
         author: "User".to_string(),
         version: PRESET_VERSION,
         params: map,
+        time_patterns: Some(bank),
+        seq_lanes: Some(params.seq_lanes()),
+    }
+}
+
+/// Apply the non-parameter parts of a preset (time patterns, sequencer lanes). Each is only
+/// touched when the preset carries it. GUI thread only.
+pub fn apply_extras(params: &GrainwaveParams, preset: &Preset) {
+    if let Some(bank) = &preset.time_patterns {
+        let mut bank = bank.clone();
+        bank.sanitize();
+        {
+            let mut current = params.time_patterns.write().unwrap_or_else(|e| e.into_inner());
+            *current = bank;
+        }
+        params.pattern_version.fetch_add(1, Ordering::Relaxed);
+    }
+    if let Some(lanes) = preset.seq_lanes {
+        for (atom, word) in params.seq_lane_atomics().into_iter().zip(lanes) {
+            atom.store(word, Ordering::Relaxed);
+        }
     }
 }
 
@@ -155,6 +202,7 @@ pub fn apply(params: &GrainwaveParams, setter: &ParamSetter, preset: &Preset) {
             ctx.raw_end_set_parameter(ptr);
         }
     }
+    apply_extras(params, preset);
 }
 
 /// `$XDG_CONFIG_HOME/grainwave/presets/`, falling back to `~/.config/grainwave/presets/`.
@@ -238,6 +286,7 @@ pub fn save_user(preset: &Preset) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::params::SEQ_LANE_ACTIVE;
     use std::collections::HashSet;
 
     fn ids(params: &GrainwaveParams) -> HashSet<String> {
@@ -254,6 +303,100 @@ mod tests {
         for id in EXCLUDED_IDS {
             assert!(ids.contains(*id), "excluded id {id} is not a real param");
         }
+    }
+
+
+    #[test]
+    fn init_is_fully_clean() {
+        let init = factory_presets().into_iter().find(|p| p.name == "Init").unwrap();
+        assert!(init.params.is_empty());
+        assert!(init.time_patterns.is_none() && init.seq_lanes.is_none());
+    }
+
+    #[test]
+    fn grain_presets_set_an_audible_amount() {
+        for preset in factory_presets() {
+            let uses_grains = preset.params.keys().any(|k| k.starts_with("g_") && k != "g_amt");
+            if uses_grains {
+                let amt = preset.params.get("g_amt").copied().unwrap_or(0.0);
+                assert!((0.6..=1.0).contains(&amt), "{}: g_amt {amt}", preset.name);
+                let rev = preset.params.get("p_rev").copied().unwrap_or(0.0);
+                assert!(rev <= 0.6, "{}: reverse {rev} too destructive", preset.name);
+            }
+        }
+    }
+
+    #[test]
+    fn time_and_sequencer_presets_are_well_formed() {
+        let presets = factory_presets();
+        let time: Vec<_> = presets.iter().filter(|p| p.params.contains_key("ts_pat")).collect();
+        assert!(time.len() >= 4, "need at least 4 time-shaper presets");
+        for p in &time {
+            assert!(!p.params.contains_key("g_amt"), "{}: time presets keep grains at 0", p.name);
+            assert!(p.params.contains_key("ts_sync"), "{}", p.name);
+        }
+        let seq: Vec<_> = presets.iter().filter(|p| p.params.get("sq_on") == Some(&1.0)).collect();
+        assert!(seq.len() >= 2, "need at least 2 sequencer presets");
+        for p in &seq {
+            let lanes = p.seq_lanes.unwrap_or_else(|| panic!("{}: sequencer preset without lanes", p.name));
+            assert!(lanes.iter().any(|l| l & SEQ_LANE_ACTIVE != 0), "{}: no active lane", p.name);
+            assert!(lanes.iter().all(|l| *l <= (SEQ_LANE_ACTIVE | 0xFFFF)), "{}: stray bits", p.name);
+        }
+    }
+
+    #[test]
+    fn patterns_and_lanes_roundtrip() {
+        use crate::pattern::Point;
+        let src = GrainwaveParams::default();
+        {
+            let mut bank = src.time_patterns.write().unwrap();
+            bank.patterns[4].name = "Custom".into();
+            bank.patterns[4].points = vec![Point::hold(0.0, 0.0), Point::hold(0.5, 0.25), Point::curve(0.75, 0.1, 0.4)];
+        }
+        let lanes = [0x1_8888, 0xFFFF, 0x0, 0x1_0F0F, 0xAAAA, 0x1_3030];
+        for (a, w) in src.seq_lane_atomics().into_iter().zip(lanes) {
+            a.store(w, Ordering::Relaxed);
+        }
+        let preset = parse(&to_json(&capture(&src, "Round trip"))).unwrap();
+        assert_eq!(preset.seq_lanes, Some(lanes));
+
+        let dst = GrainwaveParams::default();
+        let v0 = dst.pattern_version.load(Ordering::Relaxed);
+        apply_extras(&dst, &preset);
+        assert!(dst.pattern_version.load(Ordering::Relaxed) > v0);
+        assert_eq!(*dst.time_patterns.read().unwrap(), *src.time_patterns.read().unwrap());
+        assert_eq!(dst.seq_lanes(), lanes);
+    }
+
+    #[test]
+    fn absent_extras_leave_bank_and_lanes_alone() {
+        let p = GrainwaveParams::default();
+        p.seq_grains.store(0x1_1234, Ordering::Relaxed);
+        p.time_patterns.write().unwrap().patterns[2].name = "Mine".into();
+        let v0 = p.pattern_version.load(Ordering::Relaxed);
+        let preset = parse(r#"{ "name": "Plain", "params": { "m_dust": 0.2 } }"#).unwrap();
+        apply_extras(&p, &preset);
+        assert_eq!(p.seq_grains.load(Ordering::Relaxed), 0x1_1234);
+        assert_eq!(p.time_patterns.read().unwrap().patterns[2].name, "Mine");
+        assert_eq!(p.pattern_version.load(Ordering::Relaxed), v0);
+        // And a plain preset serializes without the optional keys.
+        let json = to_json(&preset);
+        assert!(!json.contains("time_patterns") && !json.contains("seq_lanes"));
+    }
+
+    #[test]
+    fn bank_from_preset_is_sanitized() {
+        let p = GrainwaveParams::default();
+        let preset = parse(
+            r#"{ "name": "Bad bank", "time_patterns": { "patterns": [
+                { "name": "x", "points": [ { "x": 2.0, "y": -1.0 } ] } ] } }"#,
+        )
+        .unwrap();
+        apply_extras(&p, &preset);
+        let bank = p.time_patterns.read().unwrap();
+        assert_eq!(bank.patterns.len(), crate::pattern::NUM_PATTERNS);
+        let q = bank.patterns[0].points[0];
+        assert!((0.0..=1.0).contains(&q.x) && (0.0..=1.0).contains(&q.y));
     }
 
     #[test]
@@ -308,6 +451,8 @@ mod tests {
             author: String::new(),
             version: 1,
             params: BTreeMap::new(),
+            time_patterns: None,
+            seq_lanes: None,
         };
         preset.params.insert("g_size".into(), 0.42);
         preset.params.insert("g_env".into(), 0.4); // 4 variants: snaps to 1/3

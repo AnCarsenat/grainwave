@@ -1,0 +1,20 @@
+{
+  "name": "Crush Every 4th",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "d_bits": 0.2667,
+    "d_drive": 0.3,
+    "d_srate": 0.51,
+    "sq_on": 1.0,
+    "sq_rate": 0.4
+  },
+  "seq_lanes": [
+    65535,
+    65535,
+    65535,
+    100488,
+    65535,
+    65535
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Roll Out",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "d_bits": 0.7333,
+    "d_srate": 0.7528,
+    "f_lp": 0.88,
+    "s_rvmix": 0.1,
+    "ts_pat": 0.3636,
+    "ts_sync": 0.3077
+  }
+}

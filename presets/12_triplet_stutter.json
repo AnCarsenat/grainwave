@@ -1,0 +1,13 @@
+{
+  "name": "Triplet Stutter",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "d_bits": 0.7333,
+    "d_crdens": 0.1,
+    "f_lp": 0.9457,
+    "s_rvmix": 0.08,
+    "ts_pat": 0.2727,
+    "ts_sync": 0.3077
+  }
+}

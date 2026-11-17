@@ -1,0 +1,13 @@
+{
+  "name": "End-of-Bar Stop",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "d_drive": 0.15,
+    "d_wowd": 0.1,
+    "f_lp": 0.88,
+    "m_age": 0.1,
+    "ts_pat": 0.4545,
+    "ts_sync": 0.3077
+  }
+}

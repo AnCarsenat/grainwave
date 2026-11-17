@@ -5,15 +5,16 @@
   "params": {
     "d_wowd": 0.2,
     "f_lp": 0.795,
+    "g_amt": 0.8,
     "g_dens": 0.5492,
     "g_jit": 0.3,
     "g_mem": 0.3,
     "g_size": 0.6633,
     "g_spread": 0.9,
-    "m_age": 0.6,
+    "m_age": 0.4,
     "p_pjit": 0.5833,
     "p_quant": 1.0,
-    "p_rev": 0.35,
+    "p_rev": 0.15,
     "s_rvmix": 0.3,
     "s_rvsize": 0.7
   }
