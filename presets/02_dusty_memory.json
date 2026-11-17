@@ -1,0 +1,21 @@
+{
+  "name": "Dusty Memory",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "d_bump": 0.3333,
+    "d_crdens": 0.3,
+    "d_crlvl": 0.3,
+    "f_lp": 0.7397,
+    "g_dens": 0.378,
+    "g_jit": 0.2,
+    "g_mem": 0.4,
+    "g_size": 0.5969,
+    "m_age": 0.35,
+    "m_dust": 0.55,
+    "mix": 0.8,
+    "p_rev": 0.15,
+    "s_rvmix": 0.15,
+    "s_rvsize": 0.5
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "Stutter Crate",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "buf_bars": 0.1429,
+    "buf_mode": 0.0,
+    "d_bits": 0.6,
+    "d_bump": 0.4444,
+    "d_crdens": 0.35,
+    "d_crlvl": 0.35,
+    "d_srate": 0.7528,
+    "f_hp": 0.2115,
+    "f_lp": 0.8188,
+    "g_ddiv": 0.2,
+    "g_dmode": 1.0,
+    "g_jit": 0.05,
+    "g_size": 0.6924,
+    "p_rev": 0.2,
+    "p_stop": 0.1,
+    "r_stch": 0.45,
+    "r_stut": 0.4,
+    "r_swing": 0.3
+  }
+}

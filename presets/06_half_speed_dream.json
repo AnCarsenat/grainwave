@@ -1,0 +1,24 @@
+{
+  "name": "Half-Speed Dream",
+  "author": "Grainwave",
+  "version": 1,
+  "params": {
+    "d_wowd": 0.3,
+    "d_wowr": 0.2516,
+    "f_lp": 0.7066,
+    "g_dens": 0.488,
+    "g_jit": 0.35,
+    "g_mem": 0.5,
+    "g_size": 0.8328,
+    "g_spread": 0.7,
+    "m_age": 0.25,
+    "mix": 0.85,
+    "p_rev": 0.3,
+    "p_speed": 0.2582,
+    "s_dldiv": 0.0,
+    "s_dlfb": 0.4737,
+    "s_dlmix": 0.2,
+    "s_rvmix": 0.4,
+    "s_rvsize": 0.85
+  }
+}
