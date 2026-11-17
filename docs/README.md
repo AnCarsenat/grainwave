@@ -38,4 +38,3 @@ the design; these files record the details.
 4. Rewind / Tape stop stay on if the editor closes while held (released when it reopens).
 5. Sequencer steps and MIDI pattern switches are block-accurate, not sample-accurate.
 6. No undo for curve and sequencer edits.
-7. Add a `LICENSE` file (GPL-3.0) before the first public release.
