@@ -132,6 +132,14 @@ cp    target/bundled/Grainwave.clap ~/.clap/
 
 Then rescan plugins in your host.
 
+For development, symlink instead of copying so every `cargo xtask bundle` is picked up after a
+host rescan or restart:
+
+```sh
+ln -sfn "$PWD/target/bundled/Grainwave.vst3" ~/.vst3/Grainwave.vst3
+ln -sfn "$PWD/target/bundled/Grainwave.clap" ~/.clap/Grainwave.clap
+```
+
 ---
 
 ## Architecture
@@ -150,7 +158,7 @@ src/
     input.rs      Channel mode encode/decode                                      feat/grain-engine
     grains.rs     Capture buffer, scheduler, voices, playback modes               feat/grain-engine
     rhythm.rs     Stutter, swing, gate, rewind, tape stop                         feat/rhythm
-    degrade.rs    Degrade chain                                                   feat/degrade
+    degrade/      Degrade chain (mod, oversample, saturation, wow, tone, noise)   feat/degrade
     filter.rs     Low-pass / high-pass / drift                                    feat/degrade
     space.rs      Reverb + delay                                                  feat/space-output
     output.rs     Output gain + limiter                                           feat/space-output
@@ -171,7 +179,7 @@ docs/             Design notes per module
 The audio thread and the GUI communicate only through:
 - **Parameters** (`Arc<GrainwaveParams>`): GUI writes via `ParamSetter`, audio reads.
 - **`VisualState`** (`Arc`, atomics): audio writes, GUI reads. f32 stored as bits in `AtomicU32`,
-  `Relaxed` ordering.
+  `Relaxed` ordering. Exception: `gate_step` is a plain integer (read with `.load()`).
 
 ### Module contract
 
@@ -222,7 +230,16 @@ host in ─► input gain ─┬────────────────
 
 ## Module specifications
 
-These are the target behaviors. Implementation notes and deviations live in `docs/`.
+These are the target behaviors. Implementation notes and deviations live in [`docs/`](docs/README.md).
+Main deviations in the shipped code:
+
+- Capture buffer is 32 s + 1 s guard; voice stealing fades over 2 ms instead of cutting.
+- Stutter keeps looping the same slice while the chance roll keeps succeeding.
+- Inside Space, the delay feeds the reverb. Delay time changes use a linear (not equal-power)
+  crossfade to keep the feedback loop stable.
+- Degrade stages and filters crossfade in/out instead of hard bypass; neutral settings are
+  bit-transparent.
+- Oversampling adds ~23 samples of unreported latency at 2× (see [docs/degrade.md](docs/degrade.md)).
 
 ### Input (`dsp/input.rs`)
 - **Stereo:** no-op.
@@ -519,6 +536,7 @@ Commit style: Conventional Commits (`feat(grains): ...`, `fix(degrade): ...`, `t
 
 - **v0.1 (MVP):** buffer, grain size/density/position/jitter, reverse chance, pitch,
   bitcrush/sample rate, wow/flutter, low-pass, Dust, mix.
-- **v0.2:** everything in [Features](#features).
+- **v0.2:** everything in [Features](#features). **Implemented** (all six feature branches
+  merged, 96 unit tests). Open issues listed in [docs/README.md](docs/README.md#known-issues-to-fix-next).
 - **Later:** LV2 build, per-grain filter, sample-accurate automation, multiple modulation
   targets per source, preset tagging, oversampling for the whole degrade chain.
