@@ -834,6 +834,16 @@ pub struct Snapshot {
     pub mix: f32,
     pub output_gain: f32,
     pub limiter: bool,
+    // modulation (sources and routing; read only by dsp::modulation)
+    pub lfo_shape: [LfoShape; 2],
+    pub lfo_rate_mode: [LfoRate; 2],
+    pub lfo_rate_hz: [f32; 2],
+    pub lfo_target: [ModTarget; 2],
+    pub lfo_amount: [f32; 2],
+    pub env_target: ModTarget,
+    pub env_amount: f32,
+    pub env_attack_ms: f32,
+    pub env_release_ms: f32,
 }
 
 impl Snapshot {
@@ -918,6 +928,19 @@ impl Snapshot {
             mix: p.output.mix.value(),
             output_gain: p.output.output_gain.value(),
             limiter: p.output.limiter.value(),
+
+            lfo_shape: [p.modulation.lfos[0].shape.value(), p.modulation.lfos[1].shape.value()],
+            lfo_rate_mode: [
+                p.modulation.lfos[0].rate_mode.value(),
+                p.modulation.lfos[1].rate_mode.value(),
+            ],
+            lfo_rate_hz: [p.modulation.lfos[0].rate_hz.value(), p.modulation.lfos[1].rate_hz.value()],
+            lfo_target: [p.modulation.lfos[0].target.value(), p.modulation.lfos[1].target.value()],
+            lfo_amount: [p.modulation.lfos[0].amount.value(), p.modulation.lfos[1].amount.value()],
+            env_target: p.modulation.env_target.value(),
+            env_amount: p.modulation.env_amount.value(),
+            env_attack_ms: p.modulation.env_attack_ms.value(),
+            env_release_ms: p.modulation.env_release_ms.value(),
         }
     }
 }
