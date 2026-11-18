@@ -141,18 +141,11 @@ pub fn sequencer_grid(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual:
         for step in 0..SEQ_STEPS {
             let cell = Rect::from_min_size(pos2(col_x(step), row_y(lane)), vec2(cell_w, row_h));
             let on = word & (1 << step) != 0;
-            let fill = match (on, active) {
-                (true, true) => color,
-                (true, false) => dim(color, 0.35),
-                (false, _) => {
-                    if step % 4 == 0 {
-                        CELL_OFF_BEAT
-                    } else {
-                        CELL_OFF
-                    }
-                }
-            };
+            let (fill, edge) = cell_look(on, active, step, color);
             painter.rect_filled(cell, 2.0, fill);
+            if let Some(edge) = edge {
+                painter.rect_stroke(cell, 2.0, Stroke::new(1.0_f32, edge), StrokeKind::Inside);
+            }
             if hover == Some((lane, step)) {
                 painter.rect_stroke(cell, 2.0, Stroke::new(1.0_f32, TEXT), StrokeKind::Inside);
             }
@@ -167,16 +160,52 @@ pub fn sequencer_grid(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual:
     resp.on_hover_text("Click: toggle step · drag: paint · beats of 4 are shaded");
 }
 
+/// Fill and optional outline of one cell. Active lanes light their on-steps in the lane
+/// color; inactive lanes (which never gate) keep their pattern visible only as a faint tint
+/// with a dim outline, so they read as switched off rather than as fully lit.
+fn cell_look(on: bool, active: bool, step: usize, color: Color32) -> (Color32, Option<Color32>) {
+    let off = if step & 3 == 0 { CELL_OFF_BEAT } else { CELL_OFF }; // first step of each beat
+    match (on, active) {
+        (true, true) => (color, None),
+        (true, false) => (dim(color, 0.12), Some(dim(color, 0.45))),
+        (false, _) => (off, None),
+    }
+}
+
 /// Small live readout of the six stage gains (used by the sequencer header).
 pub fn gain_dots(ui: &Ui, rect: Rect, visual: &VisualState) {
     let painter = ui.painter_at(rect);
     let n = SEQ_LANES as f32;
     let w = rect.width() / n;
-    for i in 0..SEQ_LANES {
-        let g = load_f32(&visual.section_gain[i]);
+    for (i, (gain, color)) in visual.section_gain.iter().zip(LANE_COLORS).enumerate() {
+        let g = load_f32(gain);
         let g = if g.is_finite() { g.clamp(0.0, 1.0) } else { 0.0 };
         let c = pos2(rect.left() + (i as f32 + 0.5) * w, rect.center().y);
         let r = (rect.height() * 0.32).min(w * 0.35);
-        painter.circle_filled(c, r, dim(LANE_COLORS[i], 0.15 + 0.85 * g));
+        painter.circle_filled(c, r, dim(color, 0.15 + 0.85 * g));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn luma(c: Color32) -> f32 {
+        0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32
+    }
+
+    #[test]
+    fn inactive_lanes_are_dimmed() {
+        for color in LANE_COLORS {
+            for step in [0, 1] {
+                let (lit, _) = cell_look(true, true, step, color);
+                let (inactive, edge) = cell_look(true, false, step, color);
+                let (off, _) = cell_look(false, true, step, color);
+                assert!(edge.is_some(), "inactive on-step keeps an outline so the pattern stays readable");
+                // An inactive on-step must sit much closer to an off cell than to a lit one.
+                let (l_lit, l_in, l_off) = (luma(lit), luma(inactive), luma(off));
+                assert!(l_in - l_off.min(l_in) < 0.25 * (l_lit - l_off), "{color:?} step {step}: {l_in} vs off {l_off}, lit {l_lit}");
+            }
+        }
     }
 }
