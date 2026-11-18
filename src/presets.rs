@@ -266,7 +266,25 @@ pub fn file_name_for(name: &str) -> String {
     if s.trim_matches('_').is_empty() {
         s = "preset".to_string();
     }
+    // Windows device names stay reserved even with an extension: writing `con.json` or
+    // `nul.json` goes to the device, so the save "succeeds" and no file appears.
+    if is_windows_reserved(&s) {
+        s.push('_');
+    }
     format!("{s}.json")
+}
+
+/// `CON`, `PRN`, `AUX`, `NUL`, `COM1`..`COM9`, `LPT1`..`LPT9` (input is already lowercase).
+fn is_windows_reserved(stem: &str) -> bool {
+    match stem {
+        "con" | "prn" | "aux" | "nul" => true,
+        _ => {
+            let b = stem.as_bytes();
+            b.len() == 4
+                && (stem.starts_with("com") || stem.starts_with("lpt"))
+                && (b'1'..=b'9').contains(&b[3])
+        }
+    }
 }
 
 /// Save a preset into `dir` (created if needed), overwriting a file with the same name.
@@ -516,5 +534,23 @@ mod tests {
         assert_eq!(file_name_for("Dusty Memory"), "dusty_memory.json");
         assert_eq!(file_name_for("../../etc"), "______etc.json");
         assert_eq!(file_name_for("  "), "preset.json");
+    }
+
+    #[test]
+    fn file_names_avoid_windows_device_names() {
+        for (name, file) in [
+            ("CON", "con_.json"),
+            ("Nul", "nul_.json"),
+            ("aux", "aux_.json"),
+            ("PRN", "prn_.json"),
+            ("COM1", "com1_.json"),
+            ("lpt9", "lpt9_.json"),
+        ] {
+            assert_eq!(file_name_for(name), file, "{name}");
+        }
+        // Not reserved: keep as is.
+        for (name, file) in [("Console", "console.json"), ("COM0", "com0.json"), ("com10", "com10.json")] {
+            assert_eq!(file_name_for(name), file, "{name}");
+        }
     }
 }
