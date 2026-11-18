@@ -24,6 +24,8 @@ const CAPACITY_GUARD_SECONDS: f32 = 1.0;
 const STEAL_FADE_SECONDS: f32 = 0.002;
 /// Output loudness smoothing time constant (s).
 const GAIN_SMOOTH_SECONDS: f32 = 0.02;
+/// RNG seed, restored by `reset()` so renders are repeatable.
+const RNG_SEED: u32 = 0x6772_6169;
 /// Hard limit on the total semitone offset and on the playback rate.
 const MAX_SEMITONES: f32 = 48.0;
 const MAX_RATE: f64 = 16.0;
@@ -240,7 +242,7 @@ impl GrainEngine {
     pub fn new(visual: Arc<VisualState>) -> Self {
         Self {
             visual,
-            rng: Rng::new(0x6772_6169),
+            rng: Rng::new(RNG_SEED),
             sample_rate: 48_000.0,
             buf_l: Vec::new(),
             buf_r: Vec::new(),
@@ -273,6 +275,7 @@ impl GrainEngine {
         }
         self.cap = cap;
         self.written = 0;
+        self.rng = Rng::new(RNG_SEED);
         self.voices = [Voice::IDLE; MAX_VOICES];
         self.next_id = 0;
         self.countdown = 0.0;
@@ -957,6 +960,23 @@ mod tests {
         let mask = e.visual.grain_active.load(Ordering::Relaxed);
         let active = e.voices.iter().filter(|v| v.active).count() as u32;
         assert_eq!(mask.count_ones(), active);
+    }
+
+    #[test]
+    fn reset_makes_renders_repeatable() {
+        // Hosts call reset() before an offline bounce: two bounces must be identical.
+        let mut e = engine();
+        let mut s = snap();
+        s.density_hz = 30.0;
+        s.reverse_chance = 0.5;
+        s.pitch_jitter_st = 5.0;
+        s.position_jitter = 0.7;
+        s.spread = 1.0;
+        let input = |i: usize| (i as f32 * 0.003).sin() * 0.5;
+        let (a, _) = run(&mut e, &s, 48_000, 256, input);
+        e.reset(SR, 512);
+        let (b, _) = run(&mut e, &s, 48_000, 256, input);
+        assert!(a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()));
     }
 
     #[test]
