@@ -131,8 +131,8 @@ impl Reverb {
     fn reset(&mut self, sr: f32) {
         self.sr = sr.max(1000.0);
         let mut total = 0;
-        for i in 0..LINES {
-            let mut n = ((LINE_MS[i] * 0.001 * self.sr).round() as usize).max(2);
+        for (i, ms) in LINE_MS.iter().enumerate() {
+            let mut n = ((ms * 0.001 * self.sr).round() as usize).max(2);
             // Nudge until coprime with every previous line (avoids coinciding echoes).
             while (0..i).any(|j| gcd(n, self.len[j]) != 1) {
                 n += 1;
@@ -157,12 +157,8 @@ impl Reverb {
 
     fn target_gains(&self, size: f32) -> [f32; LINES] {
         let t60 = T60_MIN * (T60_MAX / T60_MIN).powf(size);
-        let mut g = [0.0; LINES];
-        for i in 0..LINES {
-            // -60 dB after t60 seconds: g = 10^(-3 * len / (sr * t60)).
-            g[i] = 10f32.powf(-3.0 * self.len[i] as f32 / (self.sr * t60));
-        }
-        g
+        // -60 dB after t60 seconds: g = 10^(-3 * len / (sr * t60)).
+        self.len.map(|len| 10f32.powf(-3.0 * len as f32 / (self.sr * t60)))
     }
 
     fn process(&mut self, l: &mut [f32], r: &mut [f32], size: f32, mix_target: f32) {
@@ -187,10 +183,7 @@ impl Reverb {
 
         // Feedback gains ramp linearly across the block.
         let inv_n = 1.0 / n as f32;
-        let mut g_step = [0.0; LINES];
-        for i in 0..LINES {
-            g_step[i] = (target_g[i] - self.gain[i]) * inv_n;
-        }
+        let g_step: [f32; LINES] = std::array::from_fn(|i| (target_g[i] - self.gain[i]) * inv_n);
 
         let c = self.smooth_c;
         let a = self.damp_a;
@@ -217,9 +210,9 @@ impl Reverb {
             // Householder reflection: H = I - (2/N) * 1 * 1^T (orthogonal, lossless).
             let h = sum * (2.0 / LINES as f32);
             let mut energy = in_l.abs() + in_r.abs();
-            for i in 0..LINES {
+            for (i, vi) in v.iter().enumerate() {
                 let inj = if i % 2 == 0 { in_l } else { in_r };
-                let w = flush(v[i] - h + inj);
+                let w = flush(vi - h + inj);
                 energy += w.abs();
                 self.buf[self.offset[i] + self.pos[i]] = w;
                 self.pos[i] += 1;
