@@ -209,11 +209,7 @@ mod tests {
             }
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
     use crate::editor::widgets::tests::drag_with;
     use nih_plug_egui::egui::PointerButton;
 
