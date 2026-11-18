@@ -12,7 +12,10 @@ use nih_plug_egui::egui::{
 use std::f32::consts::PI;
 
 /// Child `Ui` restricted (and clipped) to `rect`. Does not allocate space in the parent.
+/// A NaN rect (from layout math on a degenerate window) becomes an empty rect, since egui
+/// asserts on NaN `max_rect`.
 pub fn child(ui: &mut Ui, rect: Rect, layout: Layout) -> Ui {
+    let rect = if rect.any_nan() { Rect::from_min_size(ui.max_rect().min, egui::Vec2::ZERO) } else { rect };
     let mut c = ui.new_child(UiBuilder::new().max_rect(rect).layout(layout));
     c.set_clip_rect(rect.intersect(ui.clip_rect()));
     c
@@ -378,7 +381,9 @@ impl<'a> Cells<'a> {
 /// Grid placement for items of the given widths (in columns). Pure function, unit tested.
 pub fn fit_cells(rect: Rect, units: &[usize], pref: egui::Vec2, max: egui::Vec2) -> Vec<Rect> {
     if units.is_empty() || rect.width() <= 0.0 || rect.height() <= 0.0 {
-        return vec![Rect::NOTHING; units.len()];
+        // Empty but finite: `Rect::NOTHING` (infinite corners) turns into NaN as soon as a
+        // widget shrinks it, which makes egui panic.
+        return vec![Rect::from_min_size(rect.min, egui::Vec2::ZERO); units.len()];
     }
     let widest = units.iter().copied().max().unwrap_or(1);
     let total: usize = units.iter().sum();
@@ -520,6 +525,15 @@ pub(crate) mod tests {
             } else {
                 assert!(b == 0 && st == 0, "{button:?} drag edited the knob ({b} begins, {st} sets)");
             }
+        }
+    }
+
+    #[test]
+    fn cells_in_an_empty_rect_are_finite() {
+        let rect = Rect::from_min_max(pos2(10.0, 20.0), pos2(5.0, 18.0));
+        for r in fit_cells(rect, &[1, 2, 1], CELL_PREF, CELL_MAX) {
+            assert!(r.min.x.is_finite() && r.max.y.is_finite(), "{r:?}");
+            assert!(!r.shrink2(vec2(2.0, 0.0)).any_nan(), "{r:?} turns into NaN when shrunk");
         }
     }
 

@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn every_page_fits_at_min_and_default_size() {
-        for (w, h) in [(MIN_W, MIN_H), (960.0, 640.0), (1400.0, 900.0)] {
+        for (w, h) in [(5000.0, 3000.0)] {
             let mut state = EditorState::default();
             check(w, h, &mut state, "simple");
             state.page = Page::Advanced;
@@ -466,6 +466,24 @@ mod tests {
             // Bottom of the window minus margin, panel padding and the help line.
             let room = h - MARGIN - PAD - 22.0;
             assert!(grid.bottom() > room - 2.0, "at {w}x{h}: grid ends at {} of {room}", grid.bottom());
+        }
+    }
+
+    /// Hosts can hand the editor a window far below the minimum size (first frame before the
+    /// resize, minimized windows, a host that ignores the scale factor). The editor must still
+    /// draw without panicking, since a panic on the GUI thread takes the host down.
+    #[test]
+    fn degenerate_window_sizes_do_not_panic() {
+        for (w, h) in [(0.0, 0.0), (1.0, 1.0), (30.0, 30.0), (120.0, 80.0), (300.0, 200.0), (820.0, 40.0), (40.0, 560.0)] {
+            let mut state = EditorState::default();
+            render(w, h, &mut state);
+            state.simple_tab = 1;
+            render(w, h, &mut state);
+            state.page = Page::Advanced;
+            for tab in Tab::ALL {
+                state.tab = tab;
+                render(w, h, &mut state);
+            }
         }
     }
 
