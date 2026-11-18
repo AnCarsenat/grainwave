@@ -80,7 +80,8 @@ Envelope shape and pan are fixed at spawn, so changing them mid-grain can't clic
   slot. Only if all 32 slots are busy is the oldest voice cut hard.
 - **Spread:** `pan = spread × uniform(−1, 1)`, equal-power, scaled by √2 so a centered grain is at
   unity.
-- **Loudness:** output × `1 / sqrt(max(1, density × size_s))`, 20 ms one-pole smoothed. Synced
+- **Loudness:** each grain × `1 / sqrt(max(1, density × size_s))`, fixed when the grain spawns (so
+  lowering density or size never makes the grains already playing louder). Synced
   mode uses the equivalent Hz.
 - The engine output fully replaces its input; dry is mixed back in `lib.rs`.
 
@@ -126,5 +127,6 @@ Envelope shape and pan are fixed at spawn, so changing them mid-grain can't clic
   - `midi_gates_spawning_and_sets_pitch`
   - `voice_limit_and_stealing`
   - `envelopes_are_bounded_and_close`
+  - `density_drop_does_not_burst`
   - `waveform_fills_over_blocks`
 - **`input.rs`:** `mid_side_round_trip`, `stereo_is_transparent`, `mono_sums`

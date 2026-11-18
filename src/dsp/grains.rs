@@ -22,8 +22,6 @@ const CAPACITY_SECONDS: f32 = 32.0;
 const CAPACITY_GUARD_SECONDS: f32 = 1.0;
 /// Fade used when a voice is stolen (s).
 const STEAL_FADE_SECONDS: f32 = 0.002;
-/// Output loudness smoothing time constant (s).
-const GAIN_SMOOTH_SECONDS: f32 = 0.02;
 /// Hard limit on the total semitone offset and on the playback rate.
 const MAX_SEMITONES: f32 = 48.0;
 const MAX_RATE: f64 = 16.0;
@@ -71,6 +69,8 @@ struct Voice {
     envelope: GrainEnvelope,
     gain_l: f32,
     gain_r: f32,
+    /// Overlap loudness compensation, fixed at spawn (see `GrainEngine::process`).
+    norm: f32,
     /// Steal fade: 1 while playing normally, ramps to 0 once `releasing`.
     fade: f32,
     releasing: bool,
@@ -92,6 +92,7 @@ impl Voice {
         envelope: GrainEnvelope::Hann,
         gain_l: 0.0,
         gain_r: 0.0,
+        norm: 1.0,
         fade: 1.0,
         releasing: false,
         pos: 0.0,
@@ -225,8 +226,6 @@ pub struct GrainEngine {
     /// Synced mode: grid index of the last spawn.
     last_grid: Option<i64>,
 
-    gain: f32,
-    gain_coef: f32,
     fade_step: f32,
 
     /// Held MIDI notes, oldest first.
@@ -250,8 +249,6 @@ impl GrainEngine {
             next_id: 0,
             countdown: 0.0,
             last_grid: None,
-            gain: 1.0,
-            gain_coef: 0.0,
             fade_step: 1.0,
             held: [0; 128],
             held_len: 0,
@@ -277,8 +274,6 @@ impl GrainEngine {
         self.next_id = 0;
         self.countdown = 0.0;
         self.last_grid = None;
-        self.gain = 1.0;
-        self.gain_coef = (-1.0 / (GAIN_SMOOTH_SECONDS * sr)).exp();
         self.fade_step = 1.0 / (STEAL_FADE_SECONDS * sr).max(1.0);
         self.held_len = 0;
         self.wave_slice = 0;
@@ -369,7 +364,10 @@ impl GrainEngine {
             DensityMode::Synced => div_samples,
         };
         let eff_density = (sr / interval).min(sr);
-        let target_gain = (1.0 / (eff_density * size_ms as f64 * 0.001).max(1.0).sqrt()) as f32;
+        // Loudness compensation for the nominal overlap. Each grain keeps the value it was
+        // spawned with, so a parameter change only affects new grains: the grains already
+        // playing never get louder (no burst when density or size drops) and nothing steps.
+        let norm = (1.0 / (eff_density * size_ms as f64 * 0.001).max(1.0).sqrt()) as f32;
         let pos_jitter = sane(snap.position_jitter, 0.0, 0.0, 1.0);
         let midi_ok = !snap.midi_pitch || self.held_len > 0;
         let voice_limit = {
@@ -421,7 +419,7 @@ impl GrainEngine {
                 }
             };
             if spawn && midi_ok {
-                self.spawn(snap, grain_len, len_l, voice_limit, freeze);
+                self.spawn(snap, grain_len, len_l, voice_limit, freeze, norm);
             }
 
             // 3. Render voices.
@@ -444,7 +442,7 @@ impl GrainEngine {
                     p = lo;
                 }
                 let (sl, sr_) = self.read(p);
-                let env = envelope(v.envelope, v.age, v.len, sr) * v.fade;
+                let env = envelope(v.envelope, v.age, v.len, sr) * v.fade * v.norm;
                 out_l += sl * env * v.gain_l;
                 out_r += sr_ * env * v.gain_r;
 
@@ -459,9 +457,8 @@ impl GrainEngine {
                 }
             }
 
-            self.gain = target_gain + (self.gain - target_gain) * self.gain_coef;
-            l[i] = out_l * self.gain;
-            r[i] = out_r * self.gain;
+            l[i] = out_l;
+            r[i] = out_r;
         }
 
         self.update_visual(len_l);
@@ -474,6 +471,7 @@ impl GrainEngine {
         len_l: usize,
         voice_limit: usize,
         freeze: bool,
+        norm: f32,
     ) {
         // Voice allocation: release the oldest voices until there is room under the limit.
         loop {
@@ -591,6 +589,7 @@ impl GrainEngine {
             envelope: snap.envelope,
             gain_l,
             gain_r,
+            norm,
             fade: 1.0,
             releasing: false,
             pos: 0.0,
@@ -957,6 +956,27 @@ mod tests {
         let mask = e.visual.grain_active.load(Ordering::Relaxed);
         let active = e.voices.iter().filter(|v| v.active).count() as u32;
         assert_eq!(mask.count_ones(), active);
+    }
+
+    #[test]
+    fn density_drop_does_not_burst() {
+        // Dense cloud (64 Hz x 500 ms = 32 overlapping grains), then density drops to 1 Hz.
+        // The grains already playing must not get louder: the loudness compensation of the
+        // sparse setting must not be applied to the 32 grains spawned under the dense one.
+        let mut e = engine();
+        let mut s = snap();
+        s.density_hz = 64.0;
+        s.grain_size_ms = 500.0;
+        s.max_voices = 32;
+        let mut rng = Rng::new(11);
+        let noise: Vec<f32> = (0..4 * 48_000).map(|_| rng.bipolar()).collect();
+        let (dense, _) = run(&mut e, &s, 2 * 48_000, 256, |i| noise[i]);
+        let rms = |x: &[f32]| (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt();
+        let steady = rms(&dense[48_000..]);
+        s.density_hz = 1.0;
+        let (sparse, _) = run(&mut e, &s, 24_000, 256, |i| noise[2 * 48_000 + i]);
+        let after = rms(&sparse[2_400..]);
+        assert!(after < 1.5 * steady, "burst after density drop: {after} vs steady {steady}");
     }
 
     #[test]
