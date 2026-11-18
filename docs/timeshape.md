@@ -72,7 +72,8 @@ sequencer's Time lane crossfade it like every other section (see README, Signal 
 
 - A new jump during a crossfade swaps heads, so up to half of that jump can step through; very
   steep tension curves can keep restarting the fade.
-- Sync mode with the transport stopped: the delay freezes.
+- Sync mode with the transport stopped: the cursor follows the internal free-running counter
+  (continuing from the last host position), so the curve keeps cycling at the host tempo.
 - Cycles longer than 16 s (4/1 below 60 BPM) are clamped.
 - The first cycle after reset is shallower (limited by recorded history).
 - MIDI notes apply per block, not sample-accurately.
