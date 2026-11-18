@@ -164,6 +164,22 @@ impl Grainwave {
         // Patterns may have been replaced by a state load: force the audio copy to refresh.
         self.params.pattern_version.fetch_add(1, Ordering::Relaxed);
     }
+
+    /// Routes one MIDI event to the grain engine (pitch) and the time shaper (pattern switch /
+    /// trigger). A note-on with velocity 0 is a note-off (MIDI running status; VST3 passes it
+    /// through as a note-on), so it must not switch or restart the time shaper.
+    fn handle_note(&mut self, event: NoteEvent<()>) {
+        match event {
+            NoteEvent::NoteOn { note, velocity, .. } if velocity > 0.0 => {
+                self.grains.note_on(note, velocity);
+                self.time.note_on(note, velocity);
+            }
+            NoteEvent::NoteOn { note, .. } | NoteEvent::NoteOff { note, .. } => {
+                self.grains.note_off(note)
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Section target gains before sequencer gating: [time, grains, rhythm, degrade, filter, space].
@@ -315,14 +331,7 @@ impl Plugin for Grainwave {
     ) -> ProcessStatus {
         // MIDI (block accurate is fine for grain pitch).
         while let Some(event) = context.next_event() {
-            match event {
-                NoteEvent::NoteOn { note, velocity, .. } => {
-                    self.grains.note_on(note, velocity);
-                    self.time.note_on(note, velocity);
-                }
-                NoteEvent::NoteOff { note, .. } => self.grains.note_off(note),
-                _ => {}
-            }
+            self.handle_note(event);
         }
 
         let n = buffer.samples();
@@ -538,6 +547,36 @@ mod tests {
         // No position, or garbage: free-running counter.
         assert_eq!(block_beat_pos(None, true, 5.0), 5.0);
         assert_eq!(block_beat_pos(Some(f64::NAN), true, 5.0), 5.0);
+    }
+
+    #[test]
+    fn velocity_zero_note_on_is_a_note_off_for_the_time_shaper() {
+        let mut gw = Grainwave::default();
+        gw.time.reset(48_000.0, 128);
+        let mut s = snap();
+        s.ts_pattern_quantize = params::PatternQuantize::Off;
+        let t = |beat_pos| Transport {
+            sample_rate: 48_000.0,
+            bpm: 120.0,
+            beat_pos,
+            playing: true,
+            block_len: 128,
+        };
+        let (mut l, mut r) = ([0.0f32; 128], [0.0f32; 128]);
+        let active = |gw: &Grainwave| gw.visual.ts_active.load(Ordering::Relaxed);
+        let on = |note, velocity| NoteEvent::NoteOn { timing: 0, voice_id: None, channel: 0, note, velocity };
+        gw.time.process(&mut l, &mut r, &s, &t(0.0));
+        assert_eq!(active(&gw), 0);
+
+        // A real note-on (D) switches to pattern 3.
+        gw.handle_note(on(62, 0.8));
+        gw.time.process(&mut l, &mut r, &s, &t(0.1));
+        assert_eq!(active(&gw), 2);
+        // A velocity-0 note-on is a release (MIDI running-status note-off): E must not
+        // switch to pattern 5 or restart the cycle.
+        gw.handle_note(on(64, 0.0));
+        gw.time.process(&mut l, &mut r, &s, &t(0.3));
+        assert_eq!(active(&gw), 2, "velocity-0 note-on switched the pattern");
     }
 
     #[test]
