@@ -410,3 +410,22 @@ fn switching_modes_does_not_click() {
     let max_step = y.windows(2).fold(0f32, |m, w| m.max((w[1] - w[0]).abs()));
     assert!(max_step < 0.03, "max step {max_step}");
 }
+
+#[test]
+fn non_finite_input_does_not_latch() {
+    // A single NaN/inf from upstream (e.g. a bypassed Time section passing host input
+    // through) must not poison the filter / DC-blocker / EQ states forever.
+    for order in ORDERS {
+        for mode in MODES {
+            for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+                let s = heavy(order, Oversampling::X2, mode);
+                let mut x = sine(440.0, 48_000, 0.25);
+                x[1000] = bad;
+                let (l, r) = run(&s, &x, 256);
+                for v in l[1000..].iter().chain(r[1000..].iter()) {
+                    assert!(v.is_finite(), "{order:?} {mode:?} {bad}: stuck at {v}");
+                }
+            }
+        }
+    }
+}

@@ -15,13 +15,24 @@ pub(crate) fn db_to_gain(db: f32) -> f32 {
     10f32.powf(db / 20.0)
 }
 
-/// Flush values too small to matter (denormal protection for filter states).
+/// Flush values too small to matter (denormal protection for filter states). Non-finite
+/// values are flushed too, so a state that somehow blew up recovers instead of latching.
 #[inline]
 pub(crate) fn flush(v: f32) -> f32 {
-    if v.abs() < 1e-15 {
+    if v.abs() < 1e-15 || !v.is_finite() {
         0.0
     } else {
         v
+    }
+}
+
+/// Replace NaN/inf input samples with 0 so they never enter a recursive filter state.
+#[inline]
+pub(crate) fn sanitize(l: &mut [f32], r: &mut [f32]) {
+    for x in l.iter_mut().chain(r.iter_mut()) {
+        if !x.is_finite() {
+            *x = 0.0;
+        }
     }
 }
 

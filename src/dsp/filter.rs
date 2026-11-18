@@ -6,7 +6,7 @@
 //! about 0.3 Hz) and clamped to 20 Hz .. 0.45 × sample rate. A filter at its neutral setting
 //! (low-pass at 20 kHz or high-pass at 20 Hz, no resonance, no drift) is crossfaded out so the
 //! default chain is bit-transparent.
-use super::degrade::util::{clampf, flush, Fade, Smoother};
+use super::degrade::util::{clampf, flush, sanitize, Fade, Smoother};
 use super::rng::Rng;
 use super::Transport;
 use crate::params::Snapshot;
@@ -193,6 +193,8 @@ impl Filter {
         let log_max = max_hz.max(MIN_HZ).log2();
 
         let n = l.len().min(r.len());
+        // A NaN/inf would latch forever in the SVF states.
+        sanitize(&mut l[..n], &mut r[..n]);
         for i in 0..n {
             // Random walk: new step every ~1/0.3 s, smoothed by two one-poles.
             self.drift_timer += 1;
@@ -392,6 +394,23 @@ mod tests {
             }
             f.process(&mut l[..n], &mut r[..n], &s, &transport(n));
             assert!(l[..n].iter().chain(r[..n].iter()).all(|v| v.is_finite()));
+        }
+    }
+
+    #[test]
+    fn non_finite_input_does_not_latch() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut s = snap();
+            s.lowpass_hz = 2000.0;
+            s.highpass_hz = 100.0;
+            s.lowpass_res = 0.5;
+            let mut x = sine(440.0, 48_000);
+            x[1000] = bad;
+            let (l, r) = run(&s, &x, 256);
+            assert!(
+                l[1000..].iter().chain(r[1000..].iter()).all(|v| v.is_finite()),
+                "{bad} latched in the filter state"
+            );
         }
     }
 

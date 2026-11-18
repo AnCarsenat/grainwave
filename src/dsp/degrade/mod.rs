@@ -170,6 +170,8 @@ impl Degrade {
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32], snap: &Snapshot, _t: &Transport) {
         let n = l.len().min(r.len());
         let (l, r) = (&mut l[..n], &mut r[..n]);
+        // A NaN/inf would latch forever in the filter / DC-blocker / EQ states.
+        util::sanitize(l, r);
         for stage in stages(snap.degrade_order) {
             match stage {
                 Stage::Crush => crush(l, r, snap.bit_depth),
