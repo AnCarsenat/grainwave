@@ -197,12 +197,12 @@ fn units_row(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState,
     unit(ui, r(6), "MOD", C_MOD, &sec.modulation, mod_level, None, s, |ui, b| {
         // Two live LFO meters where the fader would be, then the Chaos knob.
         let painter = ui.painter_at(b);
-        for i in 0..2 {
+        for (i, lfo) in visual.lfo_values.iter().enumerate() {
             let m = Rect::from_min_max(
                 pos2(b.left() + 2.0 + i as f32 * 7.0, b.top() + 2.0),
                 pos2(b.left() + 7.0 + i as f32 * 7.0, b.bottom() - 13.0),
             );
-            meter(&painter, m, load_f32(&visual.lfo_values[i]), true, C_MOD);
+            meter(&painter, m, load_f32(lfo), true, C_MOD);
         }
         painter.text(pos2(b.left() + 8.0, b.bottom()), Align2::CENTER_BOTTOM, "LFO", FontId::proportional(9.0), TEXT_DIM);
         let k = Rect::from_min_max(pos2(b.left() + 20.0, b.top()), b.max);

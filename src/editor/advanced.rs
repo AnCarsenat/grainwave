@@ -431,8 +431,8 @@ fn waveform(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState, 
 
     let wave_color = if frozen { Color32::from_rgb(0x7e, 0x93, 0x9a) } else { WAVE };
     let slice_w = inner.width() / WAVEFORM_POINTS as f32;
-    for i in 0..WAVEFORM_POINTS {
-        let peak = load_f32(&visual.waveform[i]);
+    for (i, peak) in visual.waveform.iter().enumerate() {
+        let peak = load_f32(peak);
         let a = if peak.is_finite() { peak.clamp(0.0, 1.0) } else { 0.0 };
         if a <= 0.0 {
             continue;
@@ -451,11 +451,11 @@ fn waveform(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState, 
 
     let active = visual.grain_active.load(Ordering::Relaxed);
     let reverse = visual.grain_reverse.load(Ordering::Relaxed);
-    for i in 0..MAX_VISUAL_GRAINS {
+    for (i, pos) in visual.grain_pos.iter().enumerate().take(MAX_VISUAL_GRAINS) {
         if active & (1 << i) == 0 {
             continue;
         }
-        let pos = load_f32(&visual.grain_pos[i]);
+        let pos = load_f32(pos);
         if !pos.is_finite() {
             continue;
         }

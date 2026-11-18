@@ -412,15 +412,14 @@ impl Rhythm {
     fn perf_sample(&mut self, stop_samples: f64) -> (f32, f32) {
         let valid = self.written.min(self.cap as u64) as f64;
         let max_dist = (valid - 4.0).min(self.cap as f64 - 8.0);
-        let amp;
-        match self.mode {
+        let amp = match self.mode {
             PerfMode::Rewind => {
                 let speed = 1.0 + 2.0 * self.rewind_t.min(1.0);
                 self.rewind_t += 1.0 / self.sample_rate as f64;
                 // Writes are frozen, so the distance grows by the read speed only.
                 self.dist = (self.dist + speed).min(max_dist).max(MIN_DIST);
                 // Fade to silence when the rewind runs out of recorded material.
-                amp = ((max_dist - self.dist) / self.perf_xf).clamp(0.0, 1.0);
+                ((max_dist - self.dist) / self.perf_xf).clamp(0.0, 1.0)
             }
             PerfMode::TapeStop => {
                 match self.tape_phase {
@@ -451,10 +450,10 @@ impl Rhythm {
                     // Writes continue, so the distance grows by (1 - rate) per sample.
                     self.dist = (self.dist + 1.0 - rate).min(max_dist).max(MIN_DIST);
                 }
-                amp = (rate * TAPE_AMP_SLOPE).min(1.0);
+                (rate * TAPE_AMP_SLOPE).min(1.0)
             }
             PerfMode::Idle => return (0.0, 0.0),
-        }
+        };
         if amp <= 0.0 {
             return (0.0, 0.0);
         }
