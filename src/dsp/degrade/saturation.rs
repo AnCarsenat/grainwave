@@ -91,6 +91,19 @@ impl Saturation {
         self.dc = [DcBlocker::default(); 2];
     }
 
+    /// Jump straight to these settings (first block after a reset): no drive ramp, no fade-in.
+    pub fn prime(&mut self, drive: f32, mode: SaturationMode, factor: usize) {
+        let drive = clampf(drive, 0.0, 1.0);
+        self.mode = mode;
+        self.factor = match factor {
+            2 | 4 => factor,
+            _ => 1,
+        };
+        self.drive.reset(drive);
+        self.fade.set_target(drive > 0.0);
+        self.fade.snap();
+    }
+
     pub fn process(
         &mut self,
         l: &mut [f32],

@@ -45,9 +45,22 @@ impl Hiss {
         self.rng = Rng::new(0x4155_5353);
     }
 
-    pub fn process(&mut self, l: &mut [f32], r: &mut [f32], hiss: f32) {
+    fn target(hiss: f32) -> f32 {
         let hiss = clampf(hiss, 0.0, 1.0);
-        let target = if hiss > 0.0 { db_to_gain(-90.0 + 60.0 * hiss) * PINK_NORM } else { 0.0 };
+        if hiss > 0.0 {
+            db_to_gain(-90.0 + 60.0 * hiss) * PINK_NORM
+        } else {
+            0.0
+        }
+    }
+
+    /// Jump straight to this level (first block after a reset).
+    pub fn prime(&mut self, hiss: f32) {
+        self.level.reset(Self::target(hiss));
+    }
+
+    pub fn process(&mut self, l: &mut [f32], r: &mut [f32], hiss: f32) {
+        let target = Self::target(hiss);
         if target == 0.0 && self.level.value() == 0.0 {
             return;
         }

@@ -97,6 +97,16 @@ impl WowFlutter {
         catmull_rom(y0, y1, y2, y3, t)
     }
 
+    /// Jump straight to these depths (first block after a reset): no depth ramp, no fade-in.
+    pub fn prime(&mut self, wow_depth: f32, flutter_depth: f32) {
+        let wd = clampf(wow_depth, 0.0, 1.0);
+        let fd = clampf(flutter_depth, 0.0, 1.0);
+        self.wow_depth.reset(wd);
+        self.flutter_depth.reset(fd);
+        self.fade.set_target(wd > 0.0 || fd > 0.0);
+        self.fade.snap();
+    }
+
     pub fn process(
         &mut self,
         l: &mut [f32],

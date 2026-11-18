@@ -139,6 +139,8 @@ pub struct Degrade {
     hiss: Hiss,
     crackle: Crackle,
     dropouts: Dropouts,
+    /// True until the first block after a reset: smoothed settings then jump to their targets.
+    fresh: bool,
 }
 
 impl Degrade {
@@ -152,6 +154,7 @@ impl Degrade {
             hiss: Hiss::new(),
             crackle: Crackle::new(),
             dropouts: Dropouts::new(),
+            fresh: true,
         }
     }
 
@@ -165,11 +168,20 @@ impl Degrade {
         self.hiss.reset(sr);
         self.crackle.reset(sr);
         self.dropouts.reset(sr);
+        self.fresh = true;
     }
 
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32], snap: &Snapshot, _t: &Transport) {
         let n = l.len().min(r.len());
         let (l, r) = (&mut l[..n], &mut r[..n]);
+        if self.fresh {
+            // Start at the current settings instead of ramping up from neutral.
+            self.fresh = false;
+            self.wow.prime(snap.wow_depth, snap.flutter_depth);
+            self.saturation.prime(snap.drive, snap.saturation_mode, snap.oversampling.factor());
+            self.tone.prime(snap.tape_age, snap.head_bump_db);
+            self.hiss.prime(snap.hiss);
+        }
         for stage in stages(snap.degrade_order) {
             match stage {
                 Stage::Crush => crush(l, r, snap.bit_depth),

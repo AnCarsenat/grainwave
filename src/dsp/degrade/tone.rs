@@ -95,6 +95,15 @@ impl Tone {
         self.bump_coefs_db = 0.0;
     }
 
+    /// Jump straight to these settings (first block after a reset): no sweep, no fade-in.
+    pub fn prime(&mut self, tape_age: f32, head_bump_db: f32) {
+        let age_t = clampf(tape_age, 0.0, 1.0);
+        self.age.reset(age_t);
+        self.age_fade.set_target(age_t > 0.0);
+        self.age_fade.snap();
+        self.bump_db.reset(clampf(head_bump_db, 0.0, 9.0));
+    }
+
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32], tape_age: f32, head_bump_db: f32) {
         let sr = self.sample_rate;
         let age_t = clampf(tape_age, 0.0, 1.0);
