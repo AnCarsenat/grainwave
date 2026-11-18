@@ -161,6 +161,8 @@ impl Grainwave {
         for (fade, target) in self.fades.iter_mut().zip(stage_targets(&snap)) {
             fade.gain = target;
         }
+        // Same for the dry/wet ramp: start at the current mix, not the pre-reset value.
+        self.last_mix = if snap.mix.is_finite() { snap.mix.clamp(0.0, 1.0) } else { 1.0 };
         // Patterns may have been replaced by a state load: force the audio copy to refresh.
         self.params.pattern_version.fetch_add(1, Ordering::Relaxed);
     }
@@ -577,6 +579,16 @@ mod tests {
         gw.handle_note(on(64, 0.0));
         gw.time.process(&mut l, &mut r, &s, &t(0.3));
         assert_eq!(active(&gw), 2, "velocity-0 note-on switched the pattern");
+    }
+
+    #[test]
+    fn reset_restarts_mix_ramp_at_current_mix() {
+        // A ramp left over from before the reset (e.g. a session that was at 25 % before a
+        // state load restoring 100 %) must not be replayed on the first block after it.
+        let mut gw = Grainwave::default();
+        gw.last_mix = 0.25;
+        gw.reset_modules();
+        assert_eq!(gw.last_mix, gw.params.output.mix.value());
     }
 
     #[test]
