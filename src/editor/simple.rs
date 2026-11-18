@@ -214,16 +214,21 @@ fn seq_panel(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &VisualState,
     panel_frame(ui, rect);
     let inner = rect.shrink(PAD);
     let header = Rect::from_min_size(inner.min, vec2(inner.width(), HEADER_H));
-    seq_header(ui, header, p, visual, s);
+    seq_header(ui, header, p, visual, s, true);
     let grid = Rect::from_min_max(pos2(inner.left(), header.bottom() + 4.0), inner.max);
     sequencer_grid(ui, grid, p, visual, &mut state.seq);
 }
 
-/// Title, run switch, step rate and live stage gains. Shared with the Advanced sequencer tab.
-pub fn seq_header(ui: &mut Ui, header: Rect, p: &GrainwaveParams, visual: &VisualState, s: &ParamSetter) {
+/// Title, run switch, step rate and live stage gains. Shared with the Advanced sequencer tab,
+/// which passes `title = false` because its tab header already names the section.
+pub fn seq_header(ui: &mut Ui, header: Rect, p: &GrainwaveParams, visual: &VisualState, s: &ParamSetter, title: bool) {
     let painter = ui.painter_at(header);
-    painter.text(header.left_center(), Align2::LEFT_CENTER, "FX SEQUENCER", FontId::proportional(12.5), TEXT);
-    let x0 = header.left() + 110.0;
+    let x0 = if title {
+        painter.text(header.left_center(), Align2::LEFT_CENTER, "FX SEQUENCER", FontId::proportional(12.5), TEXT);
+        header.left() + 110.0
+    } else {
+        header.left()
+    };
     let run = Rect::from_min_size(pos2(x0, header.top()), vec2(56.0, header.height()));
     let label = if p.sequencer.enabled.value() { "RUN" } else { "OFF" };
     toggle(ui, run, &p.sequencer.enabled, s, label, ACCENT);
