@@ -429,3 +429,15 @@ fn non_finite_input_does_not_latch() {
         }
     }
 }
+
+#[test]
+fn starts_at_current_settings_after_reset() {
+    // Tape age 1 (2.5 kHz low-pass) must dull a 12 kHz tone from the first block after a
+    // reset, not sweep down from 20 kHz while fading in.
+    let mut s = snap();
+    s.tape_age = 1.0;
+    let x = sine(12_000.0, 2400, 0.25);
+    let (y, _) = run(&s, &x, 256);
+    let ratio = rms(&y[48..]) / rms(&x[48..]);
+    assert!(ratio < 0.1, "first 50 ms passed {ratio} of the input");
+}

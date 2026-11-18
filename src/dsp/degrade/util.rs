@@ -101,6 +101,11 @@ impl Fade {
         self.on = on;
     }
 
+    /// Jump straight to the current target (used on the first block after a reset).
+    pub fn snap(&mut self) {
+        self.value = if self.on { 1.0 } else { 0.0 };
+    }
+
     /// True while the stage must be computed (on, or still fading out).
     #[inline]
     pub fn active(&self) -> bool {

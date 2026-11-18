@@ -113,6 +113,8 @@ pub struct Filter {
     drift_timer: u32,
     drift_period: u32,
     rng: Rng,
+    /// True until the first block after a reset: smoothers then jump to their targets.
+    fresh: bool,
 }
 
 impl Filter {
@@ -135,6 +137,7 @@ impl Filter {
             drift_timer: 0,
             drift_period: 1,
             rng: Rng::new(0x5EED_F117),
+            fresh: true,
         }
     }
 
@@ -170,6 +173,7 @@ impl Filter {
         self.drift_period = (sr / DRIFT_RATE_HZ).max(1.0) as u32;
         self.drift_timer = 0;
         self.rng = Rng::new(0x5EED_F117);
+        self.fresh = true;
     }
 
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32], snap: &Snapshot, _t: &Transport) {
@@ -189,6 +193,18 @@ impl Filter {
 
         let lp_target = lp_hz.log2();
         let hp_target = hp_hz.log2();
+        if self.fresh {
+            // First block after a reset: start at the current settings instead of sweeping
+            // (and fading in) from the neutral 20 kHz / 20 Hz.
+            self.fresh = false;
+            self.lp_log.reset(lp_target);
+            self.hp_log.reset(hp_target);
+            self.lp_res.reset(lp_res);
+            self.hp_res.reset(hp_res);
+            self.drift_amt.reset(drift);
+            self.lp_fade.snap();
+            self.hp_fade.snap();
+        }
         let log_min = MIN_HZ.log2();
         let log_max = max_hz.max(MIN_HZ).log2();
 
@@ -412,6 +428,19 @@ mod tests {
                 "{bad} latched in the filter state"
             );
         }
+    }
+
+    #[test]
+    fn starts_at_current_cutoff_after_reset() {
+        // A 6 kHz tone through a 500 Hz low-pass must be attenuated from the very first
+        // block after a reset, not swept down from 20 kHz (a resonant "zip").
+        let mut s = snap();
+        s.lowpass_hz = 500.0;
+        s.lowpass_res = 1.0;
+        let x = sine(6000.0, 2400);
+        let (y, _) = run(&s, &x, 256);
+        let ratio = rms(&y[48..]) / rms(&x[48..]);
+        assert!(ratio < 0.05, "first 50 ms passed {ratio} of the input");
     }
 
     #[test]
