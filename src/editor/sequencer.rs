@@ -121,7 +121,8 @@ pub fn sequencer_grid(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual:
         let step = (0..SEQ_STEPS).rev().find(|&s| p.x >= col_x(s))?;
         Some((lane, step))
     };
-    if resp.is_pointer_button_down_on() {
+    // Primary button only: right-clicking a cell must not toggle it.
+    if resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down()) {
         if let Some((lane, step)) = resp.interact_pointer_pos().and_then(cell_at) {
             let atom = lanes[lane];
             let on = atom.load(Ordering::Relaxed) & (1 << step) != 0;
@@ -205,6 +206,32 @@ mod tests {
                 // An inactive on-step must sit much closer to an off cell than to a lit one.
                 let (l_lit, l_in, l_off) = (luma(lit), luma(inactive), luma(off));
                 assert!(l_in - l_off.min(l_in) < 0.25 * (l_lit - l_off), "{color:?} step {step}: {l_in} vs off {l_off}, lit {l_lit}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::widgets::tests::drag_with;
+    use nih_plug_egui::egui::PointerButton;
+
+    #[test]
+    fn only_primary_button_toggles_cells() {
+        let rect = Rect::from_min_size(pos2(10.0, 10.0), vec2(380.0, 120.0));
+        // A point inside step 2 of lane 0 (cells start after the lane labels).
+        let p = pos2(10.0 + 64.0 + 2.5 * 18.0, 15.0);
+        for (button, toggles) in [(PointerButton::Secondary, false), (PointerButton::Middle, false), (PointerButton::Primary, true)] {
+            let params = GrainwaveParams::default();
+            let visual = VisualState::default();
+            let mut state = SeqState::default();
+            let before = params.seq_lane_atomics()[0].load(Ordering::Relaxed);
+            drag_with(button, p, p, |ui| sequencer_grid(ui, rect, &params, &visual, &mut state));
+            let after = params.seq_lane_atomics()[0].load(Ordering::Relaxed);
+            assert_eq!(before != after, toggles, "{button:?}: lane word {before:#x} -> {after:#x}");
+            if toggles {
+                assert_eq!((before ^ after).count_ones(), 1, "primary click toggles exactly one step");
             }
         }
     }

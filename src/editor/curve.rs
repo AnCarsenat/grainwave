@@ -272,7 +272,9 @@ fn curve_canvas(ui: &mut Ui, rect: Rect, params: &GrainwaveParams, visual: &Visu
             .map(|(i, _)| i)
     };
 
-    if resp.drag_started() {
+    // Only the primary button adds or moves points (right-click cycles the shape; a slightly
+    // moving right-click must not turn into a drag that adds or moves a point).
+    if resp.drag_started_by(egui::PointerButton::Primary) {
         let origin = ui.input(|i| i.pointer.press_origin()).or(resp.interact_pointer_pos());
         if let Some(o) = origin {
             match hit(o) {
@@ -511,6 +513,22 @@ mod tests {
         let pts = &bank.patterns[3].points;
         assert_eq!(pts[i].x, 0.4);
         assert!(pts.windows(2).all(|w| w[0].x <= w[1].x));
+    }
+
+    #[test]
+    fn only_primary_drag_adds_points() {
+        use crate::editor::widgets::tests::drag_with;
+        let rect = Rect::from_min_size(pos2(10.0, 10.0), vec2(380.0, 280.0));
+        let (from, to) = (pos2(200.0, 120.0), pos2(260.0, 100.0));
+        for (button, adds) in [(egui::PointerButton::Secondary, false), (egui::PointerButton::Middle, false), (egui::PointerButton::Primary, true)] {
+            let params = GrainwaveParams::default();
+            let visual = VisualState::default();
+            let mut state = CurveState::default();
+            let n0 = read_bank(&params).patterns[0].points.len();
+            drag_with(button, from, to, |ui| curve_canvas(ui, rect, &params, &visual, &mut state, 0));
+            let n1 = read_bank(&params).patterns[0].points.len();
+            assert_eq!(n1 > n0, adds, "{button:?}: {n0} -> {n1} points");
+        }
     }
 
     #[test]

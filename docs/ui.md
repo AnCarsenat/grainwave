@@ -24,6 +24,10 @@ Branch: `feat/ui-v2` (merged; replaces the v1 editor). egui 0.31 via `nih_plug_e
 Default 960 × 640, minimum 820 × 560. Every region gets a rect from fixed budgets; widgets draw
 only inside their rect. Repaints about every 33 ms.
 
+Only the primary (left) mouse button drags knobs and faders, holds momentary buttons, moves or
+adds curve points and toggles sequencer cells; right-click is kept for menus and the curve's
+shape cycle.
+
 **Top bar (46 px):** name and status, preset browser (`<`, dropdown, `>`, "Save…" menu with name
 field, Save, Rescan), Randomize with a locks menu, Simple/Advanced toggle, and right-aligned Mix,
 Output and Limiter.

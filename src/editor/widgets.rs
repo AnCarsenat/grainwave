@@ -6,8 +6,8 @@
 use super::theme::*;
 use nih_plug::prelude::*;
 use nih_plug_egui::egui::{
-    self, pos2, vec2, Align, Align2, Color32, ComboBox, CornerRadius, FontId, Id, Layout, Pos2,
-    Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, UiBuilder,
+    self, pos2, vec2, Align, Align2, Color32, ComboBox, CornerRadius, FontId, Id, Layout,
+    PointerButton, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, UiBuilder,
 };
 use std::f32::consts::PI;
 
@@ -28,34 +28,39 @@ fn param_id<P>(ui: &Ui, kind: &str, p: &P) -> Id {
 
 /// Shared drag logic for knobs and sliders: vertical (or horizontal) drag, Shift for fine,
 /// double-click to reset. `span` is the drag distance in pixels for the full range.
+///
+/// Only the primary button edits: egui reports drags for every button, and a right- or
+/// middle-drag must not move the value. The stored start value doubles as "this widget
+/// opened a gesture", so `end_set_parameter` is only sent after a matching begin (also when
+/// the drag is cancelled with Escape rather than by releasing the button).
 fn drag_param<P: Param>(ui: &Ui, resp: &Response, param: &P, s: &ParamSetter, span: f32, horizontal: bool) {
     let drag_id = resp.id.with("drag_value");
-    if resp.double_clicked() {
+    let in_gesture = || ui.memory(|m| m.data.get_temp::<f32>(drag_id)).is_some();
+    if resp.double_clicked() && !in_gesture() {
         s.begin_set_parameter(param);
         s.set_parameter(param, param.default_plain_value());
         s.end_set_parameter(param);
         return;
     }
-    if resp.drag_started() {
+    if resp.drag_started_by(PointerButton::Primary) && !in_gesture() {
         s.begin_set_parameter(param);
         let start = param.unmodulated_normalized_value();
         ui.memory_mut(|m| m.data.insert_temp(drag_id, start));
     }
     if resp.dragged() {
-        let fine = ui.input(|i| i.modifiers.shift);
-        let speed = if fine { 0.25 } else { 1.0 } / span.max(20.0);
-        let d = if horizontal { resp.drag_delta().x } else { -resp.drag_delta().y };
-        let mut v: f32 = ui
-            .memory(|m| m.data.get_temp(drag_id))
-            .unwrap_or_else(|| param.unmodulated_normalized_value());
-        v = (v + d * speed).clamp(0.0, 1.0);
-        ui.memory_mut(|m| m.data.insert_temp(drag_id, v));
-        let plain = param.preview_plain(v);
-        if param.preview_normalized(param.preview_plain(v)) != param.unmodulated_normalized_value() {
-            s.set_parameter(param, plain);
+        if let Some(mut v) = ui.memory(|m| m.data.get_temp::<f32>(drag_id)) {
+            let fine = ui.input(|i| i.modifiers.shift);
+            let speed = if fine { 0.25 } else { 1.0 } / span.max(20.0);
+            let d = if horizontal { resp.drag_delta().x } else { -resp.drag_delta().y };
+            v = (v + d * speed).clamp(0.0, 1.0);
+            ui.memory_mut(|m| m.data.insert_temp(drag_id, v));
+            let plain = param.preview_plain(v);
+            if param.preview_normalized(param.preview_plain(v)) != param.unmodulated_normalized_value() {
+                s.set_parameter(param, plain);
+            }
         }
     }
-    if resp.drag_stopped() {
+    if resp.drag_stopped() && in_gesture() {
         s.end_set_parameter(param);
         ui.memory_mut(|m| m.data.remove::<f32>(drag_id));
     }
@@ -245,7 +250,8 @@ pub fn combo<P: Param>(ui: &mut Ui, rect: Rect, param: &P, s: &ParamSetter, labe
 pub fn momentary(ui: &mut Ui, rect: Rect, param: &BoolParam, s: &ParamSetter, label: &str, held: &mut bool, drawn: &mut bool) {
     *drawn = true;
     let resp = ui.interact(rect, param_id(ui, "momentary", param), Sense::click_and_drag());
-    let down = resp.is_pointer_button_down_on();
+    // Primary button only: a right-click must not hold the effect on.
+    let down = resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down());
     if down && !*held {
         s.begin_set_parameter(param);
         s.set_parameter(param, true);
@@ -435,8 +441,87 @@ pub fn boxes<'a>(ui: &mut Ui, rect: Rect, list: Vec<(&str, Color32, Cells<'a>)>)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use nih_plug_egui::egui::{Context, Event, RawInput};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Host context that only counts gesture calls.
+    #[derive(Default)]
+    pub struct CountingContext {
+        pub begins: AtomicUsize,
+        pub sets: AtomicUsize,
+        pub ends: AtomicUsize,
+    }
+
+    impl GuiContext for CountingContext {
+        fn plugin_api(&self) -> PluginApi {
+            PluginApi::Standalone
+        }
+        fn request_resize(&self) -> bool {
+            false
+        }
+        unsafe fn raw_begin_set_parameter(&self, _param: ParamPtr) {
+            self.begins.fetch_add(1, Ordering::Relaxed);
+        }
+        unsafe fn raw_set_parameter_normalized(&self, _param: ParamPtr, _normalized: f32) {
+            self.sets.fetch_add(1, Ordering::Relaxed);
+        }
+        unsafe fn raw_end_set_parameter(&self, _param: ParamPtr) {
+            self.ends.fetch_add(1, Ordering::Relaxed);
+        }
+        fn get_state(&self) -> PluginState {
+            unimplemented!("not used by the editor")
+        }
+        fn set_state(&self, _state: PluginState) {}
+    }
+
+    /// Press `button` at `from`, move to `to` in a few frames, release. `draw` runs every frame
+    /// inside a full-window `Ui`.
+    pub fn drag_with(button: PointerButton, from: Pos2, to: Pos2, mut draw: impl FnMut(&mut Ui)) {
+        let ctx = Context::default();
+        let mut frame = |events: Vec<Event>| {
+            let input = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(400.0, 300.0))),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| draw(ui));
+            });
+        };
+        frame(vec![Event::PointerMoved(from)]);
+        frame(vec![Event::PointerButton { pos: from, button, pressed: true, modifiers: Default::default() }]);
+        for k in 1..=5 {
+            frame(vec![Event::PointerMoved(from + (to - from) * k as f32 / 5.0)]);
+        }
+        frame(vec![Event::PointerButton { pos: to, button, pressed: false, modifiers: Default::default() }]);
+        frame(vec![]);
+    }
+
+    #[test]
+    fn only_primary_drag_moves_a_knob_with_balanced_gesture() {
+        let param = FloatParam::new("p", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 });
+        let rect = Rect::from_min_size(pos2(50.0, 50.0), vec2(60.0, 80.0));
+        for (button, expect_edit) in [
+            (PointerButton::Secondary, false),
+            (PointerButton::Middle, false),
+            (PointerButton::Primary, true),
+        ] {
+            let gui = CountingContext::default();
+            let setter = ParamSetter::new(&gui);
+            drag_with(button, rect.center(), rect.center() - vec2(0.0, 40.0), |ui| {
+                knob(ui, rect, &param, &setter, "P", false, ACCENT);
+            });
+            let (b, st, e) = (gui.begins.load(Ordering::Relaxed), gui.sets.load(Ordering::Relaxed), gui.ends.load(Ordering::Relaxed));
+            assert_eq!(b, e, "{button:?}: unbalanced gesture ({b} begins, {e} ends)");
+            if expect_edit {
+                assert!(b == 1 && st > 0, "{button:?}: expected one gesture with edits, got {b} begins, {st} sets");
+            } else {
+                assert!(b == 0 && st == 0, "{button:?} drag edited the knob ({b} begins, {st} sets)");
+            }
+        }
+    }
 
     #[test]
     fn cells_always_fit() {
