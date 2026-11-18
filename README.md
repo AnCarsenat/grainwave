@@ -262,7 +262,7 @@ pub fn process(&mut self, l: &mut [f32], r: &mut [f32], snap: &Snapshot, t: &Tra
 - Randomness uses `dsp::rng::Rng` with a fixed seed per module instance.
 
 `Transport` gives `sample_rate`, `bpm` (120 if the host gives none), `beat_pos` in quarter notes
-at the block start (internal free-running counter if the host gives none), `playing`,
+at the block start (internal free-running counter if the host gives none or is stopped), `playing`,
 `block_len`, and `samples_per_beat()`.
 
 ## Signal flow

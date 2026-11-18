@@ -182,6 +182,21 @@ fn stage_targets(s: &Snapshot) -> [f32; 6] {
     t.map(|g| if g.is_finite() { g.clamp(0.0, 1.0) } else { 0.0 })
 }
 
+/// Beat position at the start of this block.
+///
+/// Modules derive per-sample positions as `beat_pos + i / samples_per_beat`, so the block
+/// start must advance with the audio. A stopped host keeps reporting the same playhead every
+/// block, which would replay the same slice of every tempo grid (time shaper curve, stutter
+/// and gate steps, synced grains, LFOs, sequencer) once per block. While the host is not
+/// playing, or gives no usable position, the internal free-running counter is used instead;
+/// it continues from the last host position, and pressing play is just a seek.
+fn block_beat_pos(host_pos: Option<f64>, playing: bool, free_beats: f64) -> f64 {
+    match host_pos {
+        Some(p) if playing && p.is_finite() => p,
+        _ => free_beats,
+    }
+}
+
 /// FX sequencer step (0..15) at `beat_pos` on the host clock, or `None` when the sequencer is off.
 fn seq_step(s: &Snapshot, beat_pos: f64) -> Option<usize> {
     if !s.seq_enabled {
@@ -317,7 +332,7 @@ impl Plugin for Grainwave {
 
         let host = context.transport();
         let bpm = host.tempo.unwrap_or(120.0).max(1.0);
-        let beat_pos = host.pos_beats().unwrap_or(self.free_beats);
+        let beat_pos = block_beat_pos(host.pos_beats(), host.playing, self.free_beats);
         let transport = Transport {
             sample_rate: self.sample_rate,
             bpm,
@@ -504,6 +519,25 @@ mod tests {
         assert_eq!(seq_step(&s, 4.0), Some(0));
         s.seq_rate = Division::Eighth;
         assert_eq!(seq_step(&s, 1.0), Some(2));
+    }
+
+    #[test]
+    fn stopped_host_keeps_beat_moving() {
+        // Stopped host: same reported playhead every block. The block start must still advance.
+        let spb_blocks = 512.0 * 120.0 / 60.0 / 48_000.0;
+        let mut free = 7.3;
+        let mut last = f64::NEG_INFINITY;
+        for _ in 0..10 {
+            let pos = block_beat_pos(Some(7.3), false, free);
+            assert!(pos > last, "beat position must advance while stopped");
+            last = pos;
+            free = pos + spb_blocks;
+        }
+        // Playing: the host position wins (loops and seeks follow the host).
+        assert_eq!(block_beat_pos(Some(2.0), true, 99.0), 2.0);
+        // No position, or garbage: free-running counter.
+        assert_eq!(block_beat_pos(None, true, 5.0), 5.0);
+        assert_eq!(block_beat_pos(Some(f64::NAN), true, 5.0), 5.0);
     }
 
     #[test]

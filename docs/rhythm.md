@@ -77,8 +77,8 @@ block.
 ## Limitations
 
 - Gate assumes a 4-beat bar; the host time signature is ignored.
-- With the host transport stopped and `beat_pos` fixed, the grid freezes: no new stutter
-  boundaries, the gate holds its step.
+- With the host transport stopped, `lib.rs` feeds the internal free-running counter (continuing
+  from the last host position), so the grid keeps running at the host tempo.
 - Holding rewind more than about 1.7 s at 3× exhausts the buffer and goes silent.
 - With swing on, step lengths are uneven, so a looping stutter slice drifts against swung
   boundaries.
