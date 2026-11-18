@@ -132,4 +132,5 @@ Envelope shape and pan are fixed at spawn, so changing them mid-grain can't clic
   - `envelopes_are_bounded_and_close`
   - `density_drop_does_not_burst`
   - `waveform_fills_over_blocks`
+  - `reset_makes_renders_repeatable`
 - **`input.rs`:** `mid_side_round_trip`, `stereo_is_transparent`, `mono_sums`
