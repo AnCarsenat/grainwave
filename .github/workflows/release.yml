@@ -81,11 +81,11 @@ jobs:
           [ "${GITHUB_REF_TYPE}" = "tag" ] || version="dev-${GITHUB_SHA::7}"
           archive="Grainwave-${version}-${{ matrix.name }}.zip"
           cd target/bundled
-          cp ../../README.md ../../LICENSE* . 2>/dev/null || true
+          cp ../../README.md ../../LICENSE .
           if [ "$RUNNER_OS" = "Windows" ]; then
-            7z a -tzip "../../$archive" Grainwave.vst3 Grainwave.clap README.md
+            7z a -tzip "../../$archive" Grainwave.vst3 Grainwave.clap README.md LICENSE
           else
-            zip -r -y "../../$archive" Grainwave.vst3 Grainwave.clap README.md
+            zip -r -y "../../$archive" Grainwave.vst3 Grainwave.clap README.md LICENSE
           fi
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
 
