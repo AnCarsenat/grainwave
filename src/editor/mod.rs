@@ -425,6 +425,50 @@ mod tests {
         }
     }
 
+    /// Renders one pass and returns every text string painted.
+    fn painted_texts(w: f32, h: f32, state: &mut EditorState) -> Vec<String> {
+        let ctx = Context::default();
+        apply_theme(&ctx);
+        let params = GrainwaveParams::default();
+        let visual = VisualState::default();
+        let gui = NullContext;
+        let setter = ParamSetter::new(&gui);
+        let mut out = None;
+        for _ in 0..2 {
+            let input = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(w, h))),
+                ..Default::default()
+            };
+            out = Some(ctx.run(input, |ctx| {
+                egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
+                    draw(ui, &params, &visual, &setter, state);
+                });
+            }));
+        }
+        out.unwrap()
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn advanced_sequencer_tab_has_one_title_and_fills_the_tab() {
+        for (w, h) in [(MIN_W, MIN_H), (960.0, 640.0)] {
+            let mut state = EditorState { page: Page::Advanced, tab: Tab::Sequencer, ..Default::default() };
+            let titles = painted_texts(w, h, &mut state).iter().filter(|t| t.as_str() == "FX SEQUENCER").count();
+            assert_eq!(titles, 1, "at {w}x{h}: \"FX SEQUENCER\" painted {titles} times");
+            let widgets = render(w, h, &mut state);
+            let grid = widgets.iter().find(|(id, _)| *id == egui::Id::new("seq_grid")).expect("sequencer grid").1;
+            // Bottom of the window minus margin, panel padding and the help line.
+            let room = h - MARGIN - PAD - 22.0;
+            assert!(grid.bottom() > room - 2.0, "at {w}x{h}: grid ends at {} of {room}", grid.bottom());
+        }
+    }
+
     #[test]
     fn tiny_window_does_not_panic() {
         let mut state = EditorState::default();

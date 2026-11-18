@@ -144,13 +144,18 @@ pub fn advanced_page(ui: &mut Ui, rect: Rect, p: &GrainwaveParams, visual: &Visu
         }
         Tab::Modulation => modulation_tab(ui, content, p, visual, s),
         Tab::Sequencer => {
+            // The tab header already shows the "FX SEQUENCER" title and power switch, so the
+            // sequencer header here only carries Run, Step and the gain dots.
             let head = Rect::from_min_size(content.min, vec2(content.width(), HEADER_H));
-            seq_header(ui, head, p, visual, s);
-            let grid_h = (content.height() - HEADER_H - 40.0).min(260.0);
-            let grid = Rect::from_min_size(pos2(content.left(), head.bottom() + 8.0), vec2(content.width(), grid_h));
+            seq_header(ui, head, p, visual, s, false);
+            let help_h = 22.0;
+            let grid_top = head.bottom() + 8.0;
+            // Fill the tab (rows up to 90 px tall) instead of leaving the lower half empty.
+            let grid_h = (content.bottom() - help_h - grid_top).clamp(0.0, 6.0 * 90.0 + 10.0);
+            let grid = Rect::from_min_size(pos2(content.left(), grid_top), vec2(content.width(), grid_h));
             sequencer_grid(ui, grid, p, visual, &mut state.seq);
             ui.painter_at(content).text(
-                pos2(content.left(), grid.bottom() + 10.0),
+                pos2(content.left(), grid.bottom() + 8.0),
                 Align2::LEFT_TOP,
                 "Click a cell to toggle, drag to paint. LED = lane active (inactive lanes never gate). \
                  Right-click a lane name for quick patterns.",
