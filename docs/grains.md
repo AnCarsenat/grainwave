@@ -75,9 +75,11 @@ Envelope shape and pan are fixed at spawn, so changing them mid-grain can't clic
 
 ## Voices, spread, loudness
 
-- Fixed pool of 32. Active limit `max_voices` (1–32), or `min(max_voices, 8)` with Low CPU.
+- Fixed pool of 40: up to 32 playing voices plus 8 slots for voices fading out after a steal.
+  Active limit `max_voices` (1–32), or `min(max_voices, 8)` with Low CPU.
 - **Stealing:** at the limit, the oldest voice fades out over 2 ms and the new grain takes a free
-  slot. Only if all 32 slots are busy is the oldest voice cut hard.
+  slot. Only if all 40 slots are busy (more than 8 voices fading at once, e.g. right after
+  `max_voices` drops a lot) is the oldest voice cut hard.
 - **Spread:** `pan = spread × uniform(−1, 1)`, equal-power, scaled by √2 so a centered grain is at
   unity.
 - **Loudness:** each grain × `1 / sqrt(max(1, density × size_s))`, fixed when the grain spawns (so
@@ -126,6 +128,7 @@ Envelope shape and pan are fixed at spawn, so changing them mid-grain can't clic
   - `block_size_independent`: 1, 64, 512
   - `midi_gates_spawning_and_sets_pitch`
   - `voice_limit_and_stealing`
+  - `full_voice_limit_never_hard_cuts`
   - `envelopes_are_bounded_and_close`
   - `density_drop_does_not_burst`
   - `waveform_fills_over_blocks`

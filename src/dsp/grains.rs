@@ -12,8 +12,13 @@ use crate::shared::{store_f32, VisualState, MAX_VISUAL_GRAINS, WAVEFORM_POINTS};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-/// Size of the voice pool.
+/// Largest voice limit (`max_voices`).
 pub const MAX_VOICES: usize = 32;
+/// Extra pool slots for voices fading out after being stolen, so a voice released to make
+/// room under a full limit can finish its 2 ms fade instead of being cut.
+const RELEASE_SLOTS: usize = 8;
+/// Size of the voice pool.
+const POOL: usize = MAX_VOICES + RELEASE_SLOTS;
 /// Voice limit when `low_cpu` is on.
 const LOW_CPU_VOICES: usize = 8;
 /// Nominal capture capacity in seconds.
@@ -218,7 +223,7 @@ pub struct GrainEngine {
     /// Number of samples written since reset (absolute index of the next write).
     written: u64,
 
-    voices: [Voice; MAX_VOICES],
+    voices: [Voice; POOL],
     next_id: u64,
 
     /// Free mode: samples until the next spawn.
@@ -245,7 +250,7 @@ impl GrainEngine {
             buf_r: Vec::new(),
             cap: 0,
             written: 0,
-            voices: [Voice::IDLE; MAX_VOICES],
+            voices: [Voice::IDLE; POOL],
             next_id: 0,
             countdown: 0.0,
             last_grid: None,
@@ -270,7 +275,7 @@ impl GrainEngine {
         }
         self.cap = cap;
         self.written = 0;
-        self.voices = [Voice::IDLE; MAX_VOICES];
+        self.voices = [Voice::IDLE; POOL];
         self.next_id = 0;
         self.countdown = 0.0;
         self.last_grid = None;
@@ -428,7 +433,7 @@ impl GrainEngine {
             let lo = self.written as f64 - self.cap as f64 + 2.0;
             let mut out_l = 0.0f32;
             let mut out_r = 0.0f32;
-            for vi in 0..MAX_VOICES {
+            for vi in 0..POOL {
                 if !self.voices[vi].active {
                     continue;
                 }
@@ -602,14 +607,13 @@ impl GrainEngine {
         let l_f = len_l as f64;
         let mut active = 0u32;
         let mut reverse = 0u32;
-        for (i, v) in self.voices.iter().enumerate().take(MAX_VISUAL_GRAINS) {
-            if v.active {
-                active |= 1 << i;
-                if v.reverse {
-                    reverse |= 1 << i;
-                }
-                store_f32(&vis.grain_pos[i], (v.pos.rem_euclid(l_f) / l_f) as f32);
+        // The pool is larger than the display: pack active voices into the visual slots.
+        for (i, v) in self.voices.iter().filter(|v| v.active).take(MAX_VISUAL_GRAINS).enumerate() {
+            active |= 1 << i;
+            if v.reverse {
+                reverse |= 1 << i;
             }
+            store_f32(&vis.grain_pos[i], (v.pos.rem_euclid(l_f) / l_f) as f32);
         }
         vis.grain_active.store(active, Ordering::Relaxed);
         vis.grain_reverse.store(reverse, Ordering::Relaxed);
@@ -810,7 +814,7 @@ mod tests {
         s.envelope = GrainEnvelope::Square;
         // Reset the scheduler so a grain spawns now.
         e.countdown = 0.0;
-        e.voices = [Voice::IDLE; MAX_VOICES];
+        e.voices = [Voice::IDLE; POOL];
         let mut last_pos: Option<f64> = None;
         let mut last_out: Option<f32> = None;
         let mut checked = 0;
@@ -977,6 +981,34 @@ mod tests {
         let (sparse, _) = run(&mut e, &s, 24_000, 256, |i| noise[2 * 48_000 + i]);
         let after = rms(&sparse[2_400..]);
         assert!(after < 1.5 * steady, "burst after density drop: {after} vs steady {steady}");
+    }
+
+    #[test]
+    fn full_voice_limit_never_hard_cuts() {
+        // max_voices = 32 with an overlap that reaches the limit: 64 grains/s of 500 ms (32 on
+        // average, more when timing jitter bunches spawns), square envelope (full level until
+        // the last 2 ms). A voice over the limit must fade out over 2 ms, never be cut.
+        let mut e = engine();
+        let mut s = snap();
+        s.density_mode = DensityMode::Free;
+        s.density_hz = 64.0;
+        s.grain_size_ms = 500.0;
+        s.position_jitter = 1.0;
+        s.envelope = GrainEnvelope::Square;
+        s.max_voices = 32;
+        let mut cuts = 0;
+        for i in 0..96_000usize {
+            let before: Vec<(bool, u64)> = e.voices.iter().map(|v| (v.active, v.id)).collect();
+            let mut l = [0.3 * (i as f32 * 0.01).sin()];
+            let mut r = l;
+            e.process(&mut l, &mut r, &s, &transport(120.0, 0.0, 1));
+            for (v, &(was_active, id)) in e.voices.iter().zip(&before) {
+                if was_active && v.id != id {
+                    cuts += 1;
+                }
+            }
+        }
+        assert_eq!(cuts, 0, "voices were cut without a fade");
     }
 
     #[test]

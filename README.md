@@ -330,7 +330,7 @@ Main deviations in the shipped code:
   grain (`rate × (1 − t)²`); with `tape_start_chance`, from 0 to full (`rate × t²`).
 - **Interpolation:** 4-point cubic Hermite.
 - **Envelope:** Hann, triangle, square (2 ms edges), exponential decay (5 ms attack).
-- **Voices:** fixed pool of 32; `max_voices` active (8 when `low_cpu`). When full, steal the oldest.
+- **Voices:** fixed pool (32 voices + 8 release slots); `max_voices` active (8 when `low_cpu`). When full, the oldest fades out over 2 ms.
 - **Spread:** each grain gets a random pan in ±`spread`, equal-power law.
 - **Gain:** output scaled by `1 / sqrt(max(1, density × size_s))` to keep loudness steady.
 - **MIDI pitch:** when on, `midi_offset = last_held_note − 60` and grains spawn only while a note
