@@ -104,6 +104,7 @@ CPU, oversampling, freeze, momentary buttons. Ranges are deliberately tame.
 
 ## Tests
 
-`every_page_fits_at_min_and_default_size`, `tiny_window_does_not_panic`, `cells_always_fit`,
+`every_page_fits_at_min_and_default_size`, `tiny_window_does_not_panic`,
+`degenerate_window_sizes_do_not_panic`, `cells_always_fit`, `cells_in_an_empty_rect_are_finite`,
 `all_three_regions_fit_at_min_and_default`, `move_point_stays_between_neighbours`,
 `edits_bump_version_and_add_points_in_order`, `snap_labels_include_triplets`.
