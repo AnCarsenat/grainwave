@@ -14,12 +14,23 @@ env:
 
 jobs:
   test:
-    name: Build and test (Linux)
-    runs-on: ubuntu-24.04
+    name: Build and test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libgl-dev libjack-dev libx11-xcb-dev \
@@ -28,18 +39,23 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
 
-      - name: Build (warnings are errors)
+      # Warnings are errors via clippy below; a RUSTFLAGS env var here would
+      # replace the Windows static-CRT rustflags from .cargo/config.toml.
+      - name: Build
         run: cargo build --workspace
-        env:
-          RUSTFLAGS: -D warnings
 
       - name: Test
         run: cargo test --workspace
 
-      - name: Clippy
+      - name: Clippy (warnings are errors)
+        if: runner.os == 'Linux'
         run: cargo clippy --workspace -- -D warnings
-        continue-on-error: true
+
+      - name: Bundle
+        run: cargo xtask bundle grainwave --release
